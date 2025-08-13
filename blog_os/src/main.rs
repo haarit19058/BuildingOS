@@ -21,3 +21,9 @@ fn panic(_info: &PanicInfo)->!{
 // fn main() {
 //     println!("Hello, world!");
 // }
+
+
+
+// rustup target add aarch64-unknown-none
+// cargo build --target aarch64-unknown-none
+
