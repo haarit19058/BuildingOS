@@ -1,18 +1,22 @@
 #![no_std] // dont link the rust standard library
 #![no_main] // disable all rust level entry points
 
+mod vga_buffer;
+
 use core::panic::PanicInfo;
 
+
 #[unsafe(no_mangle)] // dont mangle the name of this function
-pub extern "C" fn _start() ->!{
-    // this function is the entry point, since the linker looks for a function
-    // named _start by default
+pub extern "C" fn _start() -> ! {
+    println!("Hello World{}", "!");
+
     loop {}
 }
 
 #[panic_handler]
-fn panic(_info: &PanicInfo)->!{
-    loop{}
+fn panic(info: &PanicInfo) -> ! {
+    println!("{}", info);
+    loop {}
 }
 
 
