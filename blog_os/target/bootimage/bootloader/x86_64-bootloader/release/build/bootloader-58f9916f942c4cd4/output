@@ -1,0 +1,7 @@
+cargo:rerun-if-changed=/mnt/60CE72AACE72785C/Users/Haarit/Desktop/GitHubRepos/BuildingOS/blog_os/Cargo.toml
+cargo:rustc-link-search=native=/mnt/60CE72AACE72785C/Users/Haarit/Desktop/GitHubRepos/BuildingOS/blog_os/target/bootimage/bootloader/x86_64-bootloader/release/build/bootloader-58f9916f942c4cd4/out
+cargo:rustc-link-lib=static=kernel_bin-blog_os
+cargo:rerun-if-env-changed=KERNEL
+cargo:rerun-if-env-changed=KERNEL_MANIFEST
+cargo:rerun-if-changed=/mnt/60CE72AACE72785C/Users/Haarit/Desktop/GitHubRepos/BuildingOS/blog_os/target/x86_64-blog_os/debug/blog_os
+cargo:rerun-if-changed=build.rs

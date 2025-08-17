@@ -1,0 +1,1 @@
+/mnt/60CE72AACE72785C/Users/Haarit/Desktop/GitHubRepos/BuildingOS/blog_os/target/aarch64-unknown-none/debug/blog_os: /mnt/60CE72AACE72785C/Users/Haarit/Desktop/GitHubRepos/BuildingOS/blog_os/src/main.rs
