@@ -7,6 +7,24 @@
 #include "arm.h"
 #include "syscall.h"
 
+
+/*
+How syscall pass arguments
+Whne teh user calls a system call it cant just jump into the kernel code directly - it has to trap
+into the kernel
+
+- on arm a syscall is triggered by swi
+- in xv6 the system call number is placed in r0
+- arguments go in registers r1-r4 upto 4 arguments
+- if mroe args then they fo to theh user stack
+
+The kernel needs to safely fetch those arguments from the user's address space making sure
+- they are valid
+- they dont cause the kernel to dereference bad memeory
+- they respect boundaries 
+*/
+
+
 // User code makes a system call with INT T_SYSCALL. System call number
 // in r0. Arguments on the stack, from the user call to the C library
 // system call function. The saved user sp points to the first argument.
@@ -14,6 +32,7 @@
 // Fetch the int at addr from the current process.
 int fetchint(uint addr, int *ip)
 {
+    // ensure the address is inside the process memory
     if(addr >= proc->sz || addr+4 > proc->sz) {
         return -1;
     }
@@ -114,6 +133,7 @@ extern int sys_unlink(void);
 extern int sys_wait(void);
 extern int sys_write(void);
 extern int sys_uptime(void);
+extern int sys_ps(void);
 
 static int (*syscalls[])(void) = {
         [SYS_fork]    sys_fork,
@@ -137,6 +157,7 @@ static int (*syscalls[])(void) = {
         [SYS_link]    sys_link,
         [SYS_mkdir]   sys_mkdir,
         [SYS_close]   sys_close,
+        [SYS_ps]        sys_ps,
 };
 
 void syscall(void)

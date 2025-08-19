@@ -1,11 +1,25 @@
-// Definition for ARM MMU
+// Definition for ARM MMU(memory management unit)
+// translates virtual addresses to physical addresses
 #ifndef MMU_INCLUDE
 #define MMU_INCLUDE
+
 
 // align_up/down: al must be of power of 2
 #define align_up(sz, al) (((uint)(sz)+ (uint)(al)-1) & ~((uint)(al)-1))
 #define align_dn(sz, al) ((uint)(sz) & ~((uint)(al)-1))
 //
+
+/*
+The MMU (Memory Management Unit) translates virtual → physical.
+It uses page tables for this translation
+Virtual memory is split into fixed-size blocks called pages (e.g. 4KB).
+Physical memory is split into matching blocks called frames.
+A page table entry (PTE) tells where each virtual page is stored in physical memory (and its permissions).
+👉 In ARMv6+, paging is two-level:
+1st-level (PDE: Page Directory Entry): covers a large chunk (1MB “sections”).
+2nd-level (PTE: Page Table Entry): finer granularity (4KB “pages”).
+*/
+
 // Since ARMv6, you may use two page tables, one for kernel pages (TTBR1),
 // and one for user pages (TTBR0). We use this architecture. Memory address
 // lower than UVIR_BITS^2 is translated by TTBR0, while higher memory is
@@ -13,6 +27,11 @@
 // Kernel pages are create statically during system initialization. It use
 // 1MB page mapping. User pages use 4K pages.
 //
+
+// PE - page entyr
+// PDE - page directory entry (1mb)
+// PTE - pafe table entry (4kb)
+
 
 
 // access permission for page directory/page table entries.

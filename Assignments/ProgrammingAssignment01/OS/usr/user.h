@@ -1,10 +1,6 @@
-// Contains the system call definitions in xv6
-
-
 struct stat;
 
 // system calls
-int uptime(void);
 int fork(void);
 int exit(void) __attribute__((noreturn));
 int wait(void);
@@ -23,11 +19,10 @@ int mkdir(char*);
 int chdir(char*);
 int dup(int);
 int getpid(void);
-
-
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+void ps(void);
 
 // ulib.c
 int stat(char*, struct stat*);

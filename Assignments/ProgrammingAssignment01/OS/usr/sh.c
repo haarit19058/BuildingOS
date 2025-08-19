@@ -3,6 +3,10 @@
 #include "types.h"
 #include "user.h"
 #include "fcntl.h"
+#include "fs.h"
+#include "stat.h"
+// #include "string.h"
+// #include "../lib/string.c"
 
 // Parsed command representation
 #define EXEC  1
@@ -130,17 +134,103 @@ runcmd(struct cmd *cmd)
     }
     exit();
 }
+ 
+
+void
+autocomplete(char *buf, int *n)
+{
+    // 1. Find start of current word
+    int start = *n;
+    while(start > 0 && buf[start-1] != ' ')
+        start--;
+
+    char prefix[DIRSIZ+1];
+    int plen = *n - start;
+    if(plen >= DIRSIZ)
+        plen = DIRSIZ;   // clamp
+    memmove(prefix, buf+start, plen);
+    prefix[plen] = '\0';
+
+    // 2. Open current directory
+    int fd = open(".", 0);
+    if(fd < 0)
+        return;
+
+    struct dirent de;
+    char matches[16][DIRSIZ+1];
+    int mcount = 0;
+
+    // 3. Scan directory for matches
+    while(read(fd, &de, sizeof(de)) == sizeof(de)){
+        if(de.inum == 0)
+            continue;
+
+        char dname[DIRSIZ+1];
+        memmove(dname, de.name, DIRSIZ);
+        dname[DIRSIZ] = '\0';
+
+        // check if prefix matches
+        int i = 0;
+        while(i < plen && prefix[i] == dname[i])
+            i++;
+        if(i == plen){   // prefix match
+            strcpy(matches[mcount++], dname);
+            if(mcount >= 16)
+                break;
+        }
+    }
+    close(fd);
+
+    // 4. Complete or show matches
+    if(mcount == 1){
+        // single match → complete inline
+        int extra = strlen(matches[0]) - plen;
+        memmove(buf + *n, matches[0] + plen, extra);
+        *n += extra;
+        buf[*n] = '\0';
+        write(1, matches[0] + plen, extra);   // echo completed part
+    } else if(mcount > 1){
+        // multiple matches → list
+        write(1, "\n", 1);
+        for(int i = 0; i < mcount; i++){
+            write(1, matches[i], strlen(matches[i]));
+            write(1, "  ", 2);
+        }
+        write(1, "\n$ ", 3);
+        write(1, buf, *n);
+    }
+}
+
+
 
 int
 getcmd(char *buf, int nbuf)
 {
     printf(2, "$ ");
     memset(buf, 0, nbuf);
-    gets(buf, nbuf);
-    if(buf[0] == 0) // EOF
-        return -1;
+
+    int n = 0;
+    char c;
+    while(n+1 < nbuf){
+        if(read(0, &c, 1) < 1)
+            return -1;
+
+        if(c == '\n'){          // Enter
+            buf[n++] = '\0';
+            return 0;
+        } else if(c == '\t'){   // Tab pressed
+            buf[n] = '\0';
+            autocomplete(buf, &n);   // implement this
+            continue;
+        } else {
+            buf[n++] = c;
+            write(1, &c, 1);    // echo typed char
+        }
+    }
+    buf[n] = '\0';
     return 0;
 }
+
 
 int
 main(void)

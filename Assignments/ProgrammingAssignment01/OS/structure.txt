@@ -1,0 +1,83 @@
+.
+├── arm.c   arm specific low level initialization
+├── arm.h
+├── asm.S
+├── bio.c
+├── breakdown.txt
+├── buddy.c
+├── buf.h
+├── console.c
+├── defs.h
+├── device
+│   ├── picirq.c
+│   ├── timer.c
+│   ├── uart.c
+│   └── versatile_pb.h
+├── elf.h
+├── entry.S
+├── exec.c
+├── fcntl.h
+├── file.c
+├── file.h
+├── fs.c
+├── fs.h
+├── initcode.S
+├── kalloc.c
+├── kernel.ld
+├── lib
+│   └── string.c
+├── log.c
+├── main.c
+├── Makefile
+├── makefile.inc
+├── memide.c
+├── memlayout.h
+├── mmu.h
+├── param.h
+├── pipe.c
+├── proc.c
+├── proc.h
+├── README.md
+├── spinlock.c
+├── spinlock.h
+├── start.c
+├── stat.h
+├── structure.txt
+├── swtch.S
+├── syscall.c
+├── syscall.h
+├── sysfile.c
+├── sysproc.c
+├── tools
+│   ├── Makefile
+│   └── mkfs.c
+├── trap_asm.S
+├── trap.c
+├── types.h
+├── usr
+│   ├── cat.c
+│   ├── echo.c
+│   ├── forktest.c
+│   ├── grep.c
+│   ├── init.c
+│   ├── kill.c
+│   ├── ln.c
+│   ├── ls.c
+│   ├── Makefile
+│   ├── mkdir.c
+│   ├── printf.c
+│   ├── rm.c
+│   ├── sh.c
+│   ├── stressfs.c
+│   ├── ulib.c
+│   ├── umalloc.c
+│   ├── UNIX
+│   ├── uptime.c
+│   ├── user.h
+│   ├── usertests.c
+│   ├── usys.S
+│   ├── wc.c
+│   └── zombie.c
+└── vm.c
+
+5 directories, 76 files

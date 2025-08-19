@@ -27,6 +27,7 @@ void isr_timer (struct trapframe *tp, int irq_idx);
 
 struct spinlock tickslock;
 uint ticks;
+uint timer_hz = 0;
 
 // acknowledge the timer, write any value to TIMER_INTCLR should do
 static void ack_timer ()
@@ -35,13 +36,11 @@ static void ack_timer ()
     timer0[TIMER_INTCLR] = 1;
 }
 
-
-static int timer_hz = 0;
 // initialize the timer: perodical and interrupt based
 void timer_init(int hz)
 {
-    timer_hz = hz;
     volatile uint * timer0 = P2V(TIMER0);
+    timer_hz = hz;
 
     initlock(&tickslock, "time");
 
@@ -77,35 +76,4 @@ void micro_delay (int us)
 
     // disable timer
     timer1[TIMER_CONTROL] = 0;
-}
-
-
-
-
-
-// Return current tick count under lock (prevents torn reads on SMP)
-uint uptime_ticks(void)
-{
-    uint t;
-    acquire(&tickslock);
-    t = ticks;
-    release(&tickslock);
-    return t;
-}
-
-// Return uptime in milliseconds
-uint uptime_ms(void)
-{
-    uint t = uptime_ticks();
-    if (timer_hz == 0) return 0;
-    // (t * 1000) / Hz — do multiply first to preserve precision
-    return (uint)((uint64)t * 1000 / (uint)timer_hz);
-}
-
-// Return uptime in seconds
-uint uptime_seconds(void)
-{
-    uint t = uptime_ticks();
-    if (timer_hz == 0) return 0;
-    return t / (uint)timer_hz;
 }

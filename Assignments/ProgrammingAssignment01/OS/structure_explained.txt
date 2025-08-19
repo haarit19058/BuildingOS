@@ -1,0 +1,81 @@
+.
+├── arm.c             // ARM-specific low-level initialization and CPU setup for Raspberry Pi hardware.
+├── arm.h             // Declarations and constants for ARM architecture support.
+├── asm.S             // Assembly routines for context switching or low-level startup.
+├── bio.c             // Block I/O layer: buffer management for disks and file system caching.
+├── breakdown.txt     // Documentation/breakdown of code structure or logic.
+├── buddy.c           // Buddy memory allocation algorithm implementation for efficient paging.
+├── buf.h             // Definitions for buffer structures used in block device operations.
+├── console.c         // Driver for console I/O: handles keyboard and screen interactions.
+├── defs.h            // Global function prototypes, macros, and basic system-wide definitions.
+├── device
+│   ├── picirq.c         // Programmable Interrupt Controller (PIC) routines for ARM.
+│   ├── timer.c          // Timer device implementation for scheduling and timekeeping.
+│   ├── uart.c           // Serial interface (UART) driver for console output/input and debugging.
+│   └── versatile_pb.h   // Hardware-specific constants/configurations for Versatile board.
+├── elf.h             // ELF (Executable and Linkable Format) headers/definitions for program loading.
+├── entry.S           // Kernel entry point: first code executed after bootloader (assembly).
+├── exec.c            // Process execution: implements exec() syscall and loads binaries into memory.
+├── fcntl.h           // File control constants and flags for open/read/write operations.
+├── file.c            // File system layer: file descriptor management, read/write operations.
+├── file.h            // Structures and prototypes for file management.
+├── fs.c              // File system implementation: inode, directory, file allocation.
+├── fs.h              // Definitions for file system structures like inodes.
+├── initcode.S        // First user program loaded when booting; sets up initial process.
+├── kalloc.c          // Kernel memory allocator, requests memory pages for various subsystems.
+├── kernel.ld         // Linker script: controls memory layout of kernel binary.
+├── lib
+│   └── string.c         // Basic string manipulation routines used in kernel/user code.
+├── log.c             // Logging system for disk writes (write-ahead log for file system).
+├── main.c            // Kernel main: sets up system, initializes kernel subsystems, launches initial processes.
+├── Makefile          // Build script to compile full project and dependencies.
+├── makefile.inc      // Supplemental Makefile for including flags and rules.
+├── memide.c          // IDE disk emulation via memory: simplified block device for testing.
+├── memlayout.h       // Constants describing physical/virtual memory arrangement.
+├── mmu.h             // Memory Management Unit (MMU) definitions, page table entries.
+├── param.h           // System-wide parameters (max processes, files, etc.).
+├── pipe.c            // Pipe IPC implementation: user-space and kernel-space communication.
+├── proc.c            // Process table, scheduler, context switching, fork/exit logic.
+├── proc.h            // Process structure and associated constants.
+├── README.md         // Project documentation and usage.
+├── spinlock.c        // Kernel spinlock implementation for SMP synchronization.
+├── spinlock.h        // Definitions for spinlocks.
+├── start.c           // Architecture-specific kernel start-up routines.
+├── stat.h            // File status structure definitions (for stat syscall).
+├── structure.txt     // Documentation about codebase and module structure.
+├── swtch.S           // Assembly routines for process context switching.
+├── syscall.c         // System call dispatch: interface between user and kernel calls.
+├── syscall.h         // System call numbers, prototypes, and metadata.
+├── sysfile.c         // System calls that act on files (open, close, etc).
+├── sysproc.c         // System process-related syscall implementations (fork, exec, exit, etc).
+├── tools
+│   ├── Makefile         // Build rules for tools.
+│   └── mkfs.c           // File-system image creator: tools for building disk images.
+├── trap_asm.S        // Assembly for trap handling (interrupts, exceptions).
+├── trap.c            // Trap, interrupt, and exception handling logic in C.
+├── types.h           // Core type definitions (uint, uchar, struct, etc).
+├── usr
+│   ├── cat.c             // User program: prints file contents.
+│   ├── echo.c            // User program: echoes arguments.
+│   ├── forktest.c        // User program: stress tests process creation.
+│   ├── grep.c            // User program: pattern searching in files.
+│   ├── init.c            // First user process (init).
+│   ├── kill.c            // User program: send kill signal to processes.
+│   ├── ln.c              // User program: create links between files.
+│   ├── ls.c              // User program: list directory contents.
+│   ├── Makefile          // Build rules for user programs.
+│   ├── mkdir.c           // User program: create directories.
+│   ├── printf.c          // User program: printf implementation.
+│   ├── rm.c              // User program: remove files.
+│   ├── sh.c              // Shell: user program for interpreting commands.
+│   ├── stressfs.c        // Test program for file system stress testing.
+│   ├── ulib.c            // User-level library routines.
+│   ├── umalloc.c         // User-space memory allocator implementation.
+│   ├── UNIX              // Placeholder or directory for UNIX-compatibility tests.
+│   ├── uptime.c          // Reports system uptime.
+│   ├── user.h            // User-space call interface definitions.
+│   ├── usertests.c       // Automated user-space tests.
+│   ├── usys.S            // Assembly wrappers for system calls.
+│   ├── wc.c              // Word count utility, counts words/lines in files.
+│   └── zombie.c          // Program to demonstrate zombie process handling.
+└── vm.c               // Virtual memory: sets up and manages process address spaces (paging, MMU).

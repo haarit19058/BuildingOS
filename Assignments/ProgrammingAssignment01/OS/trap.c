@@ -5,9 +5,23 @@
 #include "arm.h"
 #include "proc.h"
 
+//  a trap is an event that causes the cpu to jump into the kernel
+// a trap handler is kernel function that handles that event
+
 // trap routine
+/*
+step 01
+- the argument is a pointer to trapframe
+- trapframe is a snapshot of the cpu
+- when trap happens the kernel recordes the current process cpu state atht emomemnt of the syscall
+
+step 02
+- after saving teh state the kernel calls the dispatcher syscall()
+- based on the number it call sthesystem call
+*/
 void swi_handler (struct trapframe *r)
 {
+    // SWI - software interrupt on x86
     proc->tf = r;
     syscall ();
 }

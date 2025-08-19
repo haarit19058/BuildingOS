@@ -1,5 +1,3 @@
-
-
 #include "syscall.h"
 
 #define SYSCALL(name) \
@@ -36,3 +34,4 @@ SYSCALL(getpid)
 SYSCALL(sbrk)
 SYSCALL(sleep)
 SYSCALL(uptime)
+SYSCALL(ps)

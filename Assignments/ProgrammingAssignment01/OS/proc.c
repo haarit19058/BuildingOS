@@ -7,6 +7,86 @@
 #include "proc.h"
 #include "spinlock.h"
 
+
+
+
+/*
+Core concepts
+1. Process creation
+- a new process begins with allocproc()
+- finds an unused slot in ptable
+- allocates a kernel stack
+- sets up a trapframe (as if the process was interuptted)
+- prepares a contect so that when scheduled it starts at forkret
+
+- userinit() creates the very first process initcode
+- loads tiny code (initcode.s) into memory
+- sets up its trapframe to run in user mode at address 0
+
+2. Fork
+- fork() duplicates teh current process
+- calls allocproc() to make a child
+- copies parent's memory (copyuvm)
+- duplicate file descriptors and cwd
+- child gets the same registers/trapframe but return value in r0 = 0
+so fork() returns differently in parent and child
+
+3. exit and wait
+
+- exit()
+- closes files
+- marks process as zombie
+- wakes up the parent (so parent can wait)
+- calls sched() never returns
+
+- wait()
+- parent loops over ptable
+- if a child is zombie cleans up memory and return pid
+- otherwirse sleesp until a child exits
+
+
+4. Scheduler
+- cheduler() runs on every cpu
+    - infinite loop:
+    - find a runnable  process
+    - set it to running
+    - context switch to process
+    - when the process yields/exits return here
+
+5. Sleep and wakup
+
+- sleep(chan,lock)
+- process goes into sleeping state
+- records the channel it waits on
+- calls the sched
+
+
+-wakeup(chan)
+-all processses sleeping on chan become runnable
+
+6. Process kill
+- kill(pid) marks the process as killed
+- if its sleepign wake it up
+
+
+*/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 //
 // Process initialization:
 // process initialize is somewhat tricky.
@@ -24,20 +104,25 @@
 // between two processes, but instead, between the scheduler. Think of scheduler
 // as the idle process.
 //
+
+// process table
 struct {
     struct spinlock lock;
     struct proc proc[NPROC];
 } ptable;
 
+// init process and the running process
 static struct proc *initproc;
 struct proc *proc;
 
+// give next pid
 int nextpid = 1;
 extern void forkret(void);
 extern void trapret(void);
 
 static void wakeup1(void *chan);
 
+// initialize teh
 void pinit(void)
 {
     initlock(&ptable.lock, "ptable");
@@ -172,8 +257,6 @@ int growproc(int n)
 
     return 0;
 }
-
-
 
 // Create a new process copying p as the parent.
 // Sets up stack to return as if from system call.
@@ -324,35 +407,34 @@ void scheduler(void)
 {
     struct proc *p;
 
-    for(;;){
-        // Enable interrupts on this processor.
-        sti();
+    for(;;){                     // Loop forever
+        sti();                   // (1) Enable interrupts (so timer/IO can happen)
 
-        // Loop over process table looking for process to run.
-        acquire(&ptable.lock);
+        acquire(&ptable.lock);   // (2) Lock the process table
 
         for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-            if(p->state != RUNNABLE) {
+            if(p->state != RUNNABLE)   // (3) Skip non-runnable processes
                 continue;
-            }
 
-            // Switch to chosen process.  It is the process's job
-            // to release ptable.lock and then reacquire it
-            // before jumping back to us.
-            proc = p;
-            switchuvm(p);
+            proc = p;             // (4) Set global proc = current chosen process
+            switchuvm(p);         // (5) Switch to this process's page table (memory space)
 
-            p->state = RUNNING;
+            p->state = RUNNING;   // (6) Mark as RUNNING
 
+            // (7) Context switch: save CPU state into cpu->scheduler,
+            // restore CPU state from process->context
             swtch(&cpu->scheduler, proc->context);
-            // Process is done running for now.
-            // It should have changed its p->state before coming back.
+
+            // (8) When process finishes/yields, execution resumes here.
+            // Process is no longer RUNNING at this point.
             proc = 0;
         }
 
-        release(&ptable.lock);
+        release(&ptable.lock);    // (9) Unlock process table
     }
 }
+
+
 
 // Enter scheduler.  Must hold only ptable.lock
 // and have changed proc->state.
@@ -531,4 +613,38 @@ void procdump(void)
     show_callstk("procdump: \n");
 }
 
+// Print all running processes: pid, state, and name
+void
+ps(void)
+{
+    static char *states[] = {
+        [UNUSED]    "unused",
+        [EMBRYO]    "embryo",
+        [SLEEPING]  "sleep",
+        [RUNNABLE]  "runble",
+        [RUNNING]   "run",
+        [ZOMBIE]    "zombie"
+    };
+
+    struct proc *p;
+    char *state;
+
+    acquire(&ptable.lock);
+
+    cprintf("PID\tSTATE\t\tNAME\n");
+
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+        if(p->state == UNUSED)
+            continue;
+
+        if(p->state >= 0 && p->state < sizeof(states)/sizeof(states[0]) && states[p->state])
+            state = states[p->state];
+        else
+            state = "???";
+
+        cprintf("%d\t%s\t\t%s\n", p->pid, state, p->name);
+    }
+
+    release(&ptable.lock);
+}
 

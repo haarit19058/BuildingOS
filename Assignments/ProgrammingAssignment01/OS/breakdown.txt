@@ -6,10 +6,10 @@
        8      3     50      2      10 pic_enable@58-67@./device/picirq.c
        8      3     47      1       9 pic_disable@70-78@./device/picirq.c
       12      3     67      1      15 pic_dispatch@81-95@./device/picirq.c
-       5      1     22      0       5 ack_timer@32-36@./device/timer.c
-       8      1     54      1      11 timer_init@39-49@./device/timer.c
-       8      1     37      2       8 isr_timer@52-59@./device/timer.c
-       9      2     54      1      16 micro_delay@62-77@./device/timer.c
+       5      1     22      0       5 ack_timer@33-37@./device/timer.c
+       9      1     58      1      12 timer_init@40-51@./device/timer.c
+       8      1     37      2       8 isr_timer@54-61@./device/timer.c
+       9      2     54      1      16 micro_delay@64-79@./device/timer.c
       10      1     75      1      18 uart_init@33-50@./device/uart.c
        5      1     19      0       5 uart_enable_rx@53-57@./device/uart.c
        7      2     30      1       9 uartputc@59-67@./device/uart.c
@@ -122,6 +122,7 @@
       19      8    194      1      20 free@25-44@./usr/umalloc.c
       14      3     83      1      15 morecore@47-61@./usr/umalloc.c
       26      7    193      1      27 malloc@64-90@./usr/umalloc.c
+       5      1     28      1       6 main@8-13@./usr/uptime.c
       25      7    154      2      26 wc@8-33@./usr/wc.c
       17      4    107      1      19 main@36-54@./usr/wc.c
        6      2     23      0       6 main@9-14@./usr/zombie.c
@@ -222,7 +223,7 @@
        4      1     16      0       4 pinit@41-44@./proc.c
       33      4    237      0      56 allocproc@51-106@./proc.c
        4      1     10      0       4 error_init@108-111@./proc.c
-      21      2    165      0      33 userinit@117-149@./proc.c
+      21      2    165      0      33 st@117-149@./proc.c
       17      5    101      1      22 growproc@153-174@./proc.c
       28      5    199      0      39 fork@179-217@./proc.c
       29      7    169      0      42 exit@222-263@./proc.c
@@ -309,12 +310,12 @@
       12      3     72      2      18 uva2ka@383-400@./vm.c
       22      4    134      4      30 copyout@405-434@./vm.c
        5      1     36      2       5 paging_init@443-447@./vm.c
-60 file analyzed.
+61 file analyzed.
 ==============================================================
 NLOC    Avg.NLOC  AvgCCN  Avg.token  function_cnt    file
 --------------------------------------------------------------
      49       8.2     2.4       45.4         5     ./device/picirq.c
-     40       7.5     1.2       41.8         4     ./device/timer.c
+     42       7.8     1.2       42.8         4     ./device/timer.c
      43       7.2     1.6       37.6         5     ./device/uart.c
       0       0.0     0.0        0.0         0     ./device/versatile_pb.h
     100      12.2     3.4       70.6         8     ./lib/string.c
@@ -335,7 +336,8 @@ NLOC    Avg.NLOC  AvgCCN  Avg.token  function_cnt    file
      30      24.0     5.0      184.0         1     ./usr/stressfs.c
     106      10.3     3.0       59.2         9     ./usr/ulib.c
      77      19.7     6.0      156.7         3     ./usr/umalloc.c
-     35       0.0     0.0        0.0         0     ./usr/user.h
+      9       5.0     1.0       28.0         1     ./usr/uptime.c
+     34       0.0     0.0        0.0         0     ./usr/user.h
      48      21.0     5.5      130.5         2     ./usr/wc.c
      10       6.0     2.0       23.0         1     ./usr/zombie.c
       2       1.0     1.0       20.0         2     ./memlayout.h
@@ -388,4 +390,4 @@ NLOC    Avg.NLOC  AvgCCN  Avg.token  function_cnt    file
 ==========================================================================================
 Total nloc   Avg.NLOC  AvgCCN  Avg.token   Fun Cnt  Warning cnt   Fun Rt   nloc Rt
 ------------------------------------------------------------------------------------------
-      6441      17.9     4.2      109.3      308            6      0.02    0.10
+      6451      17.9     4.2      109.1      309            6      0.02    0.10

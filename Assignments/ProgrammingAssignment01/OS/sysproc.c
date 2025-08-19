@@ -6,11 +6,6 @@
 #include "mmu.h"
 #include "proc.h"
 
-uint sys_uptime(void)
-{
-    return uptime_ms();   // return milliseconds
-}
-
 int sys_fork(void)
 {
     return fork();
@@ -98,4 +93,11 @@ int sys_uptime(void)
     release(&tickslock);
 
     return xticks;
+}
+
+
+
+int sys_ps(void){
+    ps();
+    return 0;
 }

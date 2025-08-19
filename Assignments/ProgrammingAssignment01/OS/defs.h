@@ -136,6 +136,7 @@ void            userinit(void);
 int             wait(void);
 void            wakeup(void*);
 void            yield(void);
+void            ps(void);
 
 // swtch.S
 void            swtch(struct context**, struct context*);
@@ -204,9 +205,3 @@ void            init_vmm (void);
 void            kpt_freerange (uint32 low, uint32 hi);
 void            paging_init (uint phy_low, uint phy_hi);
 #endif
-
-
-
-uint uptime_ticks(void);
-uint uptime_ms(void);
-uint uptime_seconds(void);

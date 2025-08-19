@@ -2,15 +2,23 @@
 #define PROC_INCLUDE_
 
 // Per-CPU state, now we only support one CPU
+
+
 struct cpu {
     uchar           id;             // index into cpus[] below
     struct context*   scheduler;    // swtch() here to enter scheduler
     volatile uint   started;        // Has the CPU started?
 
+    // cli i sclear interrupt flag
+    /*
+    pushcli() = disable interrupts, but also count how many times this has been done.
+    popcli() = decrement counter; only re-enable interrupts when the count goes back to 0.
+    */
     int             ncli;           // Depth of pushcli nesting.
     int             intena;         // Were interrupts enabled before pushcli?
 
     // Cpu-local storage variables; see below
+    // dbt why cpu* is there in the file
     struct cpu*     cpu;
     struct proc*    proc;           // The currently-running process.
 };
@@ -49,6 +57,40 @@ struct context {
     uint    lr;
 };
 
+
+/*
+1. unused
+The process slot in the process table is free
+the kernel hanst assigned this slot to any process yet
+when teh allocproc() finds a slot unused it uses it to create a new process
+
+2. Embryo
+The process is being created. It just got teh slot in the process table but it is not ready to run yet
+Once the setup is complete it the state is changed to runnable
+
+3. Sleeping
+the process is blocked waititng for an event (i/0,lock, or toehr condition)
+it cannot run until somethign expelcitly wakes it up with wakeup()
+the scheduler will ignore process in sleeping
+
+4. Runnable
+the procses is ready to run waititng for cpu time
+it is teh process table and wil lbe picked up by the scheduler when the cpu is free
+multiple runnable proceeses may exist and teh scheduelr picks one in a round robin fashion
+
+5. running
+the process is in running state currently executing on a cpu
+there is one running process per cpu at a time
+the scheduler sets a process state  to running when it switches to it
+
+6. zombie
+the process has finished executing but its parent has not yet called wait() to collect its exit status
+the kernel keeps the process entry aroud so teh parent can read the exit code
+once the parent calls wait() the process entry is cleand up set back to unused
+
+UNUSED → EMBRYO → RUNNABLE → RUNNING → (SLEEPING ↔ RUNNABLE many times) → ZOMBIE → UNUSED
+
+*/
 
 enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 

@@ -194,6 +194,10 @@ void consoleintr (int (*getc) (void))
             }
 
             break;
+        case '\t':
+            input.buf[input.e++ % INPUT_BUF] = c;
+            consputc(c);
+            break;
 
         default:
             if ((c != 0) && (input.e - input.r < INPUT_BUF)) {

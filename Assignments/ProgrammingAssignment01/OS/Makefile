@@ -1,11 +1,17 @@
 # specify path to QEMU, installed with MacPorts 
+# define the variable 
 QEMU = qemu-system-arm
 
+# pulls in another file that contains common rules and stuff
 include makefile.inc
 
+
 # link the libgcc.a for __aeabi_idiv. ARM has no native support for div
+# define the variable libs
 LIBS = $(LIBGCC)
 
+
+# define the variable that would hold the list of all teh  
 OBJS = \
 	lib/string.o \
 	\
@@ -31,12 +37,15 @@ OBJS = \
 	trap_asm.o\
 	trap.o\
 	vm.o \
-	\
 	device/picirq.o \
 	device/timer.o \
 	device/uart.o
 
+
+# kernel objs is objs + entry.o
 KERN_OBJS = $(OBJS) entry.o
+
+
 kernel.elf: $(addprefix build/,$(KERN_OBJS)) kernel.ld build/initcode build/fs.img
 	cp -f build/initcode initcode
 	cp -f build/fs.img fs.img
@@ -47,10 +56,13 @@ kernel.elf: $(addprefix build/,$(KERN_OBJS)) kernel.ld build/initcode build/fs.i
 	$(OBJDUMP) -t kernel.elf | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > kernel.sym
 	rm -f initcode fs.img
 
+
+# running in qemu
 qemu: kernel.elf
 	@clear
 	@echo "Press Ctrl-A and then X to terminate QEMU session\n"
 	$(QEMU) -M versatilepb -m 128 -cpu arm1176  -nographic -kernel kernel.elf
+
 
 INITCODE_OBJ = initcode.o
 $(addprefix build/,$(INITCODE_OBJ)): initcode.S

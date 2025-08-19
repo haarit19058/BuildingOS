@@ -5,33 +5,60 @@
 #include "memlayout.h"
 #include "mmu.h"
 #include "proc.h"
+
+// definition of the lock held by the processor
+// to prevent same process slot in process table to be accessed by multiple cores
 #include "spinlock.h"
+
+// why spinlocks are okay in kernel but not used in user programmes ??
+
+// defines the elf file format for xv6
 #include "elf.h"
 
+/*
+.ld file in the context of xv6 is a linker script
+When you compile your kernel, the compiler produces object files
+The linker (ld) combines them into one final binary (kernel.elf or kernel.img).
+The linker script (.ld) tells the linker where in memory to place code, data, and special symbols.
+
+
+In short:
+A .ld file is a map for the linker, telling it how to arrange your kernel’s code and data in memory.
+It defines important symbols (_start, etext, edata, end) that the kernel C code later uses.
+*/
 extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
 
+
+// doubt in the following section : - - - - - 
 // Xv6 can only allocate memory in 4KB blocks. This is fine
 // for x86. ARM's page table and page directory (for 28-bit
 // user address) have a size of 1KB. kpt_alloc/free is used
 // as a wrapper to support allocating page tables during boot
 // (use the initial kernel map, and during runtime, use buddy
 // memory allocator. 
+
+// simple linked list block that represents one free block
 struct run {
     struct run *next;
 };
 
+// kpt mem is a mini memory allocator for page tables
 struct {
-    struct spinlock lock;
-    struct run *freelist;
+    struct spinlock lock; // protects this list from concurrent access
+    struct run *freelist; // head of linked list of available chunks
 } kpt_mem;
 
+
+// initializes the lock and the vmm
 void init_vmm (void)
 {
     initlock(&kpt_mem.lock, "vm");
     kpt_mem.freelist = NULL;
 }
 
+
+// util to free the memory
 static void _kpt_free (char *v)
 {
     struct run *r;
@@ -41,14 +68,16 @@ static void _kpt_free (char *v)
     kpt_mem.freelist = r;
 }
 
-
 static void kpt_free (char *v)
 {
+    // if the block is the regular kernel memory space then it wasnt from the special early boot allocator
+    // so it calls the normal buddy allocator's kfree
     if (v >= (char*)P2V(INIT_KERNMAP)) {
         kfree(v, PT_ORDER);
         return;
     }
     
+    // ohterwiser the block came from special free list
     acquire(&kpt_mem.lock);
     _kpt_free (v);
     release(&kpt_mem.lock);
@@ -63,6 +92,8 @@ void kpt_freerange (uint32 low, uint32 hi)
     }
 }
 
+
+// allocate teh memory
 void* kpt_alloc (void)
 {
     struct run *r;
