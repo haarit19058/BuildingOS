@@ -171,6 +171,7 @@ void syscall(void)
 
     if((num > 0) && (num <= NELEM(syscalls)) && syscalls[num]) {
         ret = syscalls[num]();
+        proc->syscount++;
 
         // in ARM, parameters to main (argc, argv) are passed in r0 and r1
         // do not set the return value if it is SYS_exec (the user program

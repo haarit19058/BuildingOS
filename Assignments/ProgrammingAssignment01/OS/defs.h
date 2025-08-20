@@ -26,6 +26,8 @@ typedef uint32  pde_t;
 extern  uint32  _kernel_pgtbl;
 typedef void (*ISR) (struct trapframe *tf, int n);
 
+int auto_complete(char *buf, uint *index);
+
 // arm.c
 void            set_stk(uint mode, uint addr);
 void            cli (void);

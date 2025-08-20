@@ -151,6 +151,7 @@ static struct proc* allocproc(void)
     return 0;
 
     found:
+    p->syscount = 0;
     p->state = EMBRYO;
     p->pid = nextpid++;
     release(&ptable.lock);
@@ -206,27 +207,29 @@ void userinit(void)
 
     p = allocproc();
     initproc = p;
+    p->parent = 0;   // first process has no parent
 
+    
     if((p->pgdir = kpt_alloc()) == NULL) {
         panic("userinit: out of memory?");
     }
-
+    
     inituvm(p->pgdir, _binary_initcode_start, (int)_binary_initcode_size);
 
     p->sz = PTE_SZ;
-
+    
     // craft the trapframe as if
     memset(p->tf, 0, sizeof(*p->tf));
-
+    
     p->tf->r14_svc = (uint)error_init;
     p->tf->spsr = spsr_usr ();
     p->tf->sp_usr = PTE_SZ;	// set the user stack
     p->tf->lr_usr = 0;
-
+    
     // set the user pc. The actual pc loaded into r15_usr is in
     // p->tf, the trapframe.
     p->tf->pc = 0;					// beginning of initcode.S
-
+    
     safestrcpy(p->name, "initcode", sizeof(p->name));
     p->cwd = namei("/");
 
@@ -631,7 +634,7 @@ ps(void)
 
     acquire(&ptable.lock);
 
-    cprintf("PID\tSTATE\t\tNAME\n");
+    cprintf("PID\tPARENT PID\tSTATE\t\tNAME\tSYSCALLS\n");
 
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
         if(p->state == UNUSED)
@@ -642,7 +645,9 @@ ps(void)
         else
             state = "???";
 
-        cprintf("%d\t%s\t\t%s\n", p->pid, state, p->name);
+        
+        int ppid = (p->parent) ? p->parent->pid : -1;
+        cprintf("%d\t%d\t\t%s\t\t%s\t%d\n", p->pid,ppid,state, p->name,p->syscount);
     }
 
     release(&ptable.lock);

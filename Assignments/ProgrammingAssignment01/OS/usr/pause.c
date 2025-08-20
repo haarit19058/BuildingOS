@@ -1,6 +1,7 @@
 #include "types.h"
 #include "stat.h"
 #include "user.h"
+#include "param.h"
 
 int
 main(int argc, char *argv[])
@@ -15,7 +16,7 @@ main(int argc, char *argv[])
     int seconds = atoi(argv[1]);
 
     // Frequency is 10 hz so accordingly multiply it by 10
-    sleep(seconds * 10);
+    sleep(seconds * HZ);
     printf(1,"\n");
 
     exit();

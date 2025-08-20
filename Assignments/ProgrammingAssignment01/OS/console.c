@@ -12,6 +12,12 @@
 #include "mmu.h"
 #include "proc.h"
 
+
+
+
+
+
+
 static void consputc (int);
 
 static int panicked = 0;
@@ -194,10 +200,54 @@ void consoleintr (int (*getc) (void))
             }
 
             break;
-        case '\t':
-            input.buf[input.e++ % INPUT_BUF] = c;
-            consputc(c);
-            break;
+        case '\t': {
+
+            // make a temporaryr buffer to store the input buffer
+            char tmp[INPUT_BUF];
+            int start = input.e;
+
+            // find start of current word
+            while(start > input.w && input.buf[(start - 1) % INPUT_BUF] != ' ')
+                start--;
+
+            // find teh length of the usre input and write it in to temp buffer
+            int prefix_length = input.e - start;
+            for(int i = 0; i < prefix_length; i++)
+                tmp[i] = input.buf[(start + i) % INPUT_BUF];
+            tmp[prefix_length] = '\0';
+
+            uint idx = prefix_length;
+            int matches = auto_complete(tmp, &idx);
+
+            if(matches == 1){
+                // erase old partial word from console
+                // for(int i = 0; i < prefix_length; i++) {
+                //     consputc(BACKSPACE);
+                //     consputc(' ');
+                //     consputc(BACKSPACE);
+                // }
+
+                // print and insert new word
+                for(int i = prefix_length; i < idx; i++){
+                    input.buf[(start + i) % INPUT_BUF] = tmp[i];
+                    consputc(tmp[i]);
+                }
+                input.e = start + idx;
+            } else if(matches > 1){
+                // print all matches, then reprint prompt + buffer
+                // cprintf("\n");
+                cprintf("$ ");
+                for(uint i = input.w; i < input.e; i++)
+                    consputc(input.buf[i % INPUT_BUF]);
+            } else {
+                // no matches, beep
+                consputc('\a');
+            }
+        }
+        break;
+
+
+
 
         default:
             if ((c != 0) && (input.e - input.r < INPUT_BUF)) {

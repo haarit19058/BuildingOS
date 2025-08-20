@@ -1,5 +1,7 @@
 struct stat;
 
+// void auto_complete(char* ,int);
+
 // system calls
 int fork(void);
 int exit(void) __attribute__((noreturn));

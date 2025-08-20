@@ -39,7 +39,8 @@ OBJS = \
 	vm.o \
 	device/picirq.o \
 	device/timer.o \
-	device/uart.o
+	device/uart.o \
+	auto_complete.o
 
 
 # kernel objs is objs + entry.o

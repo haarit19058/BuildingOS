@@ -13,6 +13,55 @@
 
 #define static_assertion(a, b) do { switch (0) case 0: case (a): ; } while (0)
 
+
+
+
+
+/*
+xv6 uses a very simplistic unix like filesystem
+
+mkfs.c creates a empty filesystem image with
+- a superblock
+- a bitmap
+- an inode table
+- a root directory
+- some files are copied in like _cat _ls etx
+- the result is written to fs.img which is later mounted as its root filesystem
+
+Important structures
+- superblock: metadata about filesystem: size, number of blocks, number of inodes etc.
+- inode: stores files type size and pointers to data blocks (direct + indirect)
+- directory entry : a mapping of name->inode number inside directories
+- bitmap: each bit represents whther a blockk is used 1 or free 0
+
+Block I/O
+- wsect(sec,buf) -> write 512 bytes to sector sec
+- rsect(sec,buf) _> read 512 bytes from sector sec
+
+Inode handling
+- i2b -> block number for given inode
+- winode(inum,dinode*) -> write inode to dist
+- rinode(inum,dinode*) -> read inode from disk
+- ialloc(type) -> allocate new inode (file or dir)
+
+Block Allocation
+- balloc(used) - create a bitmap marking first used blocks  as allocated
+
+Appending data
+- iappend(inum,buf,n)->append n bytes into inode's file
+- if no data block is allocated yet allocate new
+- handle direct and indirect pointers
+- update file size
+*/
+
+
+
+
+
+
+
+
+
 int nblocks = 985;
 int nlog = LOGSIZE;
 int ninodes = 200;
@@ -77,17 +126,20 @@ main(int argc, char *argv[])
   assert((512 % sizeof(struct dinode)) == 0);
   assert((512 % sizeof(struct dirent)) == 0);
 
+  // open or create the image file 
   fsfd = open(argv[1], O_RDWR|O_CREAT|O_TRUNC, 0666);
   if(fsfd < 0){
     perror(argv[1]);
     exit(1);
   }
 
+  // initialize the super block
   sb.size = xint(size);
   sb.nblocks = xint(nblocks); // so whole disk is size sectors
   sb.ninodes = xint(ninodes);
   sb.nlog = xint(nlog);
 
+  // compute teh layout
   bitblocks = size/(512*8) + 1;
   usedblocks = ninodes / IPB + 3 + bitblocks;
   freeblock = usedblocks;
@@ -97,16 +149,20 @@ main(int argc, char *argv[])
 
   assert(nblocks + usedblocks + nlog == size);
 
+  // zero the entire image
   for(i = 0; i < nblocks + usedblocks + nlog; i++)
     wsect(i, zeroes);
 
+  // write teh super block
   memset(buf, 0, sizeof(buf));
   memmove(buf, &sb, sizeof(sb));
   wsect(1, buf);
 
+  // create teh root directory
   rootino = ialloc(T_DIR);
   assert(rootino == ROOTINO);
 
+  //add . and .. entries
   bzero(&de, sizeof(de));
   de.inum = xshort(rootino);
   strcpy(de.name, ".");
@@ -134,6 +190,7 @@ main(int argc, char *argv[])
 
     inum = ialloc(T_FILE);
 
+    // copy the user programs into the root _cat,_ls etc.
     bzero(&de, sizeof(de));
     de.inum = xshort(inum);
     strncpy(de.name, argv[i], DIRSIZ);
@@ -145,6 +202,7 @@ main(int argc, char *argv[])
     close(fd);
   }
 
+  // align the root directory size
   // fix size of root inode dir
   rinode(rootino, &din);
   off = xint(din.size);
@@ -152,6 +210,7 @@ main(int argc, char *argv[])
   din.size = xint(off);
   winode(rootino, &din);
 
+  // mark used blocks in bitmap
   balloc(usedblocks);
 
   exit(0);
