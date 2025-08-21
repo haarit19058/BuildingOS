@@ -200,6 +200,22 @@ void consoleintr (int (*getc) (void))
             }
 
             break;
+
+        /*
+        Method 2 : change in sh.c in getcmd 
+
+        case '\t':  // TAB key pressed
+            if (input.e - input.r < INPUT_BUF) {
+                input.buf[input.e++ % INPUT_BUF] = '\t';
+                // wake up shell immediately (like Enter does)
+                input.w = input.e;
+                wakeup(&input.r);
+            }
+            break;
+        
+        */
+
+        
         case '\t': {
 
             // make a temporaryr buffer to store the input buffer

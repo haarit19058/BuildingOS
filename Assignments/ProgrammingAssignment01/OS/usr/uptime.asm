@@ -689,7 +689,7 @@ Disassembly of section .text:
      99c:	e1a00000 	nop			@ (mov r0, r0)
      9a0:	e24bd004 	sub	sp, fp, #4
      9a4:	e8bd8800 	pop	{fp, pc}
-     9a8:	00001084 	.word	0x00001084
+     9a8:	00001088 	.word	0x00001088
 
 000009ac <printf>:
      9ac:	e92d000e 	push	{r1, r2, r3}
@@ -833,7 +833,7 @@ Disassembly of section .text:
      bd4:	e8bd4800 	pop	{fp, lr}
      bd8:	e28dd00c 	add	sp, sp, #12
      bdc:	e12fff1e 	bx	lr
-     be0:	0000107c 	.word	0x0000107c
+     be0:	00001080 	.word	0x00001080
 
 00000be4 <free>:
      be4:	e52db004 	push	{fp}		@ (str fp, [sp, #-4]!)
@@ -930,7 +930,7 @@ Disassembly of section .text:
      d50:	e28bd000 	add	sp, fp, #0
      d54:	e49db004 	pop	{fp}		@ (ldr fp, [sp], #4)
      d58:	e12fff1e 	bx	lr
-     d5c:	000010a0 	.word	0x000010a0
+     d5c:	000010a4 	.word	0x000010a4
 
 00000d60 <morecore>:
      d60:	e92d4800 	push	{fp, lr}
@@ -966,7 +966,7 @@ Disassembly of section .text:
      dd8:	e1a00003 	mov	r0, r3
      ddc:	e24bd004 	sub	sp, fp, #4
      de0:	e8bd8800 	pop	{fp, pc}
-     de4:	000010a0 	.word	0x000010a0
+     de4:	000010a4 	.word	0x000010a4
 
 00000de8 <malloc>:
      de8:	e92d4800 	push	{fp, lr}
@@ -1057,8 +1057,8 @@ Disassembly of section .text:
      f3c:	e1a00003 	mov	r0, r3
      f40:	e24bd004 	sub	sp, fp, #4
      f44:	e8bd8800 	pop	{fp, pc}
-     f48:	000010a0 	.word	0x000010a0
-     f4c:	00001098 	.word	0x00001098
+     f48:	000010a4 	.word	0x000010a4
+     f4c:	0000109c 	.word	0x0000109c
 
 00000f50 <__udivsi3>:
      f50:	e2512001 	subs	r2, r1, #1

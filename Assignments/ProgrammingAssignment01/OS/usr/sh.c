@@ -1,3 +1,102 @@
+// // autocomplete functionality
+// #include "stat.h"
+// #include "fs.h"
+
+// #define MAX_CMDS 32
+
+// // simple prefix match
+// int
+// startsWith(const char *s, const char *prefix)
+// {
+//   while(*prefix){
+//     if(*s == 0 || *s != *prefix)
+//       return 0;
+//     s++;
+//     prefix++;
+//   }
+//   return 1;
+// }
+
+// int
+// auto_complete(char *buff, int *index)
+// {
+//   int fd;
+//   struct stat st;
+//   struct dirent de;
+
+//   int num_commands = 0;
+//   char commands[MAX_CMDS][DIRSIZ+1];
+
+//   // open /bin (where commands live in xv6)
+//   fd = open("/", 0);
+//   if(fd < 0){
+//     printf(2, "autocomplete: cannot open /bin\n");
+//     return 0;
+//   }
+
+//   if(fstat(fd, &st) < 0 || st.type != T_DIR){
+//     printf(2, "autocomplete: not a directory\n");
+//     close(fd);
+//     return 0;
+//   }
+
+//   // read directory entries
+//   while(read(fd, &de, sizeof(de)) == sizeof(de)){
+//     if(de.inum == 0) continue;
+//     if(num_commands < MAX_CMDS){
+//       int len = DIRSIZ;
+//       while(len > 0 && (de.name[len-1] == ' ' || de.name[len-1] == '\0'))
+//         len--;
+
+//       memmove(commands[num_commands], de.name, len);
+//       commands[num_commands][len] = '\0';
+//       num_commands++;
+//     }
+//   }
+//   close(fd);
+
+//   // find matches
+//   int matches = 0, last = -1;
+//   for(int i = 0; i < num_commands; i++){
+//     if(startsWith(commands[i], buff)){
+//       matches++;
+//       last = i;
+//     }
+//   }
+
+//   if(matches == 0){
+//     // no matches
+//     return 0;
+//   } else if(matches == 1){
+//     // complete the unique match
+//     strcpy(buff, commands[last]);
+//     *index = strlen(buff);
+//     printf(1, "\r$ %s", buff);  // redraw line with completed command
+//   } else {
+//     // multiple matches
+//     printf(1, "\n");
+//     for(int i = 0; i < num_commands; i++){
+//       if(startsWith(commands[i], buff))
+//         printf(1, "%s\n", commands[i]);
+//     }
+//     // reprint prompt and buffer
+//     printf(1, "$ %s", buff);
+//   }
+
+//   return matches;
+// }
+
+
+
+
+
+
+
+
+
+
+
+
 // Shell.
 
 #include "types.h"

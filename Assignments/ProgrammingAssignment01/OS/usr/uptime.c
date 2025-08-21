@@ -7,7 +7,7 @@
 int
 main(int argc, char *argv[])
 {
-    printf(1,"System Uptime: %d\n",uptime()/HZ);
+    printf(1,"System Uptime: %d s\n",uptime()/HZ);
 
     exit();
 }

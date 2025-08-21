@@ -1,3 +1,6 @@
+// method 01 define a kernel function not meant for user console.c uses it
+// doing all teh stuff in console.c only not calling sh.c and avoiding many system calls
+
 // kernel/autocomplete.c
 #include "types.h"
 #include "param.h"
