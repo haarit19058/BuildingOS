@@ -58,6 +58,11 @@
   "C_Cpp_Runner.msvcSecureNoWarnings": false,
   "makefile.configureOnOpen": true,
   "files.associations": {
-    "fs.h": "c"
+    "*.ejs": "html",
+    "fs.h": "c",
+    "arm.h": "c",
+    "mmu.h": "c",
+    "proc.h": "c",
+    "spinlock.h": "c"
   }
 }

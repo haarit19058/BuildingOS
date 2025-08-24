@@ -3,9 +3,5 @@
 version = 4
 
 [[package]]
-name = "kernel"
-version = "0.1.0"
-
-[[package]]
-name = "user"
+name = "xv6-rust"
 version = "0.1.0"

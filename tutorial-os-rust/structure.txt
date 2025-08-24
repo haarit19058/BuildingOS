@@ -1,0 +1,120 @@
+.
+├── build.rs
+├── Cargo.lock
+├── Cargo.toml
+├── kernel8.img
+├── Makefile
+├── src
+│   ├── _arch
+│   │   └── aarch64
+│   │       └── cpu
+│   │           ├── boot.rs
+│   │           └── boot.s
+│   ├── bsp
+│   │   ├── raspberrypi
+│   │   │   └── kernel.ld
+│   │   └── raspberrypi.rs
+│   ├── bsp.rs
+│   ├── cpu
+│   │   └── boot.rs
+│   ├── cpu.rs
+│   ├── main.rs
+│   ├── panic_wait.rs
+│   ├── uart
+│   └── user
+├── structure.txt
+├── target
+│   ├── aarch64-unknown-none-softfloat
+│   │   ├── CACHEDIR.TAG
+│   │   └── release
+│   │       ├── build
+│   │       │   └── mingo-b91a45d1cdafa457
+│   │       │       ├── invoked.timestamp
+│   │       │       ├── out
+│   │       │       ├── output
+│   │       │       ├── root-output
+│   │       │       └── stderr
+│   │       ├── deps
+│   │       │   ├── kernel-f979977f72b03e28
+│   │       │   └── kernel-f979977f72b03e28.d
+│   │       ├── examples
+│   │       ├── incremental
+│   │       ├── kernel
+│   │       └── kernel.d
+│   ├── debug
+│   │   ├── build
+│   │   │   ├── mingo-2b4475ebbd6511ba
+│   │   │   │   ├── build-script-build
+│   │   │   │   ├── build_script_build-2b4475ebbd6511ba
+│   │   │   │   └── build_script_build-2b4475ebbd6511ba.d
+│   │   │   └── mingo-bfe9c7e32e1d6097
+│   │   │       ├── invoked.timestamp
+│   │   │       ├── out
+│   │   │       ├── output
+│   │   │       ├── root-output
+│   │   │       └── stderr
+│   │   ├── deps
+│   │   │   ├── kernel-99b363ed997ccfa1.d
+│   │   │   └── kernel-d3d3b4aacbc7bef0.d
+│   │   ├── examples
+│   │   └── incremental
+│   │       ├── build_script_build-3dy41eyouete9
+│   │       │   ├── s-haehi5f9mk-00b66qq-f3wxavnvx26v4iy9jv540lrp9
+│   │       │   │   ├── 04jfwq26ilobnh4860p6x9wdi.o
+│   │       │   │   ├── 0xi3a1wubaoko2874fc94wygd.o
+│   │       │   │   ├── 27pq7g4g2ak6pkfef8wn1j18w.o
+│   │       │   │   ├── 2ghz3ehqusq01q63xafa3vfji.o
+│   │       │   │   ├── 34f93whr9fpfimfqni4szf105.o
+│   │       │   │   ├── 40lgvcq69bm51f3j4y8vq0own.o
+│   │       │   │   ├── 4cbx6wxw2og1e374fo79yz5rd.o
+│   │       │   │   ├── 4g26rhd06v38rwlyaysctzjec.o
+│   │       │   │   ├── 51vwbxq4lh9oks600n6jdi3ys.o
+│   │       │   │   ├── 5cqkinpmny2gmbg6bcl04gdx6.o
+│   │       │   │   ├── 5ndig1z5g9pg9qf15aawul6pw.o
+│   │       │   │   ├── 5t4i5aod3byauqc3609lf3hty.o
+│   │       │   │   ├── 5z5drgyesjb2xxlmjcce3if11.o
+│   │       │   │   ├── 6gj0n81l986jwds3gf7k22nu2.o
+│   │       │   │   ├── 82q2ey04vpavpgu34qjbucb01.o
+│   │       │   │   ├── 85xdutmhi247oc1bob47ylhhx.o
+│   │       │   │   ├── 89gvbq3jl2sc7vepdntog6m1h.o
+│   │       │   │   ├── 8rs9pgopaysh3izniymztfbvz.o
+│   │       │   │   ├── 9xmkwbjrzebon6lc1c97oto55.o
+│   │       │   │   ├── a6r0l44kmhuwmwveaebgsnn9r.o
+│   │       │   │   ├── agj5d58o0twqwwsmagivz0jse.o
+│   │       │   │   ├── b3947ir4y4le9lowbhl19iggf.o
+│   │       │   │   ├── b7m4g0wfdpqe8x05v4anaejbu.o
+│   │       │   │   ├── b7zgl9nhjha0dxwa71y4fm24x.o
+│   │       │   │   ├── b89ujfjodcxflizn74owzcihg.o
+│   │       │   │   ├── cz7sd7ixcrpuf8k2ohjf19fve.o
+│   │       │   │   ├── dep-graph.bin
+│   │       │   │   ├── drozu4gwtzysdjrt0pyuebfmt.o
+│   │       │   │   ├── query-cache.bin
+│   │       │   │   └── work-products.bin
+│   │       │   └── s-haehi5f9mk-00b66qq.lock
+│   │       ├── kernel-1zm6xa9942qsy
+│   │       │   ├── s-hagl731fmr-011ksn7.lock
+│   │       │   ├── s-hagl731fmr-011ksn7-working
+│   │       │   │   └── dep-graph.part.bin
+│   │       │   ├── s-hagl747hq3-0bhvdlh.lock
+│   │       │   └── s-hagl747hq3-0bhvdlh-working
+│   │       │       └── dep-graph.part.bin
+│   │       └── kernel-2rlzd6p8tzwvc
+│   │           ├── s-hagl731bbg-097dxh8.lock
+│   │           ├── s-hagl731bbg-097dxh8-working
+│   │           │   └── dep-graph.part.bin
+│   │           ├── s-hagl747hth-0ndnxt6.lock
+│   │           └── s-hagl747hth-0ndnxt6-working
+│   │               └── dep-graph.part.bin
+│   ├── release
+│   │   ├── build
+│   │   │   └── mingo-bea45e3e6a46b200
+│   │   │       ├── build-script-build
+│   │   │       ├── build_script_build-bea45e3e6a46b200
+│   │   │       └── build_script_build-bea45e3e6a46b200.d
+│   │   ├── deps
+│   │   ├── examples
+│   │   └── incremental
+│   └── rpi3.build_config
+└── writeup.md
+
+41 directories, 77 files
