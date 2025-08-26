@@ -111,6 +111,8 @@ void getcallerpcs (void * v, uint pcs[])
     }
 }
 
+
+// remaining
 void show_callstk (char *s)
 {
     int i;

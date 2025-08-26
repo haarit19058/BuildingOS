@@ -7,9 +7,9 @@
 # The stack is as r4_svc-r12_svc, lr_svc, sp_usr, lr_usr, and pc_usr
 .global swtch
 
-swtch:
+swtch:                       
     STMFD   r13!, {r4-r12, lr}  // push svc r4-r12, lr to the stack
-
+                                        
     # switch the stack
     STR     r13, [r0]           // save current sp to the old PCB (**old)
     MOV     r13, r1             // load the next stack
