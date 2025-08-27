@@ -1,0 +1,2 @@
+cargo:rustc-link-arg=-Tsrc/memory.ld
+cargo:rustc-link-arg=--gc-sections
