@@ -9,12 +9,12 @@ use core::ffi::c_void;
 use crate::memlayout_h::uint;
 use crate::{types_h, mmu_h, spinlock_h, arm,memlayout_h};
 use crate::buddy; // alloc_page / free_page / kmalloc / kfree
-use crate::fs;
+use crate::file_h;
 
 // external functions / symbols assumed to exist in other modules
 // e.g. readi (from fs), panic (from defs)
 extern "C" {
-    fn readi(ip: *mut crate::inode::inode, dst: *mut u8, off: types_h::uint, n: types_h::uint) -> types_h::uint;
+    fn readi(ip: *mut file_h::inode, dst: *mut u8, off: types_h::uint, n: types_h::uint) -> types_h::uint;
     fn panic(msg: *const i8) -> !;
 }
 
@@ -204,7 +204,7 @@ pub unsafe fn inituvm(pgdir: *mut types_h::pde_t, init: *const u8, sz: types_h::
     core::ptr::copy_nonoverlapping(init, mem as *mut u8, sz as usize);
 }
 
-pub unsafe fn loaduvm(pgdir: *mut types_h::pde_t, addr: *mut u8, ip: *mut crate::inode::inode, offset: types_h::uint, sz: types_h::uint) -> i32 {
+pub unsafe fn loaduvm(pgdir: *mut types_h::pde_t, addr: *mut u8, ip: *mut file_h::inode, offset: types_h::uint, sz: types_h::uint) -> i32 {
     if (addr as usize) % (mmu_h::PTE_SZ as usize) != 0 {
         panic(b"loaduvm: addr must be page aligned\0".as_ptr() as *const i8);
     }

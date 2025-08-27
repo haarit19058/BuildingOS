@@ -45,6 +45,8 @@ mod fs;
 mod fs_h;
 mod buf_h;
 mod file_h;
+mod stat_h;
+mod file;
 
 
 
@@ -89,7 +91,7 @@ pub extern "C" fn kmain() -> ! {
 
         // Initialize UART (device/uart.c equivalent)
         // P2V is assumed to convert physical to virtual addresses as in your environment.
-        uart::uart_init(memlayout_h::P2V(versatile_pb_h::UART0));
+        // uart::uart_init(memlayout_h::P2V(versatile_pb_h::UART0));
 
         // Interrupt vector table is in the middle of first 1MB. We use the leftover for page tables.
         // VEC_TBL & PDE_MASK is a constant expression similar to the C version.
@@ -106,11 +108,11 @@ pub extern "C" fn kmain() -> ! {
         let start_free = align_up(end_addr, PT_SZ);
 
         // Custom memory allocator setup for ARM (kpt_freerange expects addresses)
-        vm::kpt_freerange(start_free, vectbl);
-        vm::kpt_freerange(vectbl + PT_SZ, P2V_WO(INIT_KERNMAP));
-        vm::paging_init(INIT_KERNMAP, PHYSTOP);
-        buddy::kmem_init();
-        buddy::kmem_init2(P2V(INIT_KERNMAP), P2V(PHYSTOP));
+        kpt_freerange(start_free, vectbl);
+        kpt_freerange(vectbl + PT_SZ, P2V_WO(INIT_KERNMAP));
+        paging_init(INIT_KERNMAP, PHYSTOP);
+        kmem_init();
+        kmem_init2(P2V(INIT_KERNMAP), P2V(PHYSTOP));
 
         // Trap/interrupt and device initialization
         trap_init();                 // vector table and stacks for models

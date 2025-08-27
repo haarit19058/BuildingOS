@@ -1,14 +1,20 @@
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+
+use crate::memlayout_h::uint;
+use crate::types_h::*;
+
 // File types
-pub const T_DIR: i16  = 1; // Directory
-pub const T_FILE: i16 = 2; // File
-pub const T_DEV: i16  = 3; // Device
+pub const T_DIR: uint16  = 1; // Directory
+pub const T_FILE: uint16 = 2; // File
+pub const T_DEV: uint16  = 3; // Device
 
 // File stat structure
 #[repr(C)]
-pub struct Stat {
-    pub type_: i16,   // Type of file (matches C "short")
-    pub dev: i32,     // File system's disk device
-    pub ino: u32,     // Inode number
-    pub nlink: i16,   // Number of links to file
-    pub size: u32,    // Size of file in bytes
+pub struct stat {
+    pub type_: uint16,   // Type of file (matches C "short")
+    pub dev: uint,     // File system's disk device
+    pub ino: uint,     // Inode number
+    pub nlink: uint16,   // Number of links to file
+    pub size: uint,    // Size of file in bytes
 }

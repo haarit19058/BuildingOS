@@ -5,7 +5,7 @@
 use crate::types_h::*;
 use crate::fs_h;
 
-// File types
+// file types
 #[repr(u8)]
 pub enum fdtype {
     FD_NONE = 0,
@@ -14,7 +14,7 @@ pub enum fdtype {
 }
 
 // In-memory file structure
-pub struct File {
+pub struct file {
     pub type_: fdtype,      // file type
     pub ref_count: uint,     // reference count
     pub readable: bool,

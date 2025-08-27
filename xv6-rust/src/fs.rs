@@ -7,9 +7,10 @@ use core::ptr;
 use core::mem;
 use core::ffi::c_void;
 
+use crate::params_h;
 use crate::types_h::*; // expects uint, etc.
-// use crate::param_h;
-// use crate::stat_h;
+// use params_h;
+use crate::stat_h;
 use crate::mmu_h;
 use crate::proc_h;
 use crate::spinlock_h;
@@ -49,7 +50,7 @@ fn min(a: uint, b: uint) -> uint {
 }
 
 // Forward declarations of functions we implement below
-unsafe fn itrunc(ip: *mut crate::inode::inode);
+// unsafe fn itrunc(ip: *mut file_h::inode);
 
 // Read the super block.
 pub unsafe fn readsb(dev: uint, sb: *mut fs_h::superblock) {
@@ -130,29 +131,29 @@ unsafe fn bfree(dev: uint, b: uint) {
 //
 // Cache structure
 static mut ICACHE_LOCK: spinlock_h::spinlock = spinlock_h::spinlock::new();
-static mut ICACHE_INODE: [crate::inode::inode; crate::param_h::NINODE as usize] = unsafe { mem::zeroed() };
+static mut ICACHE_INODE: [file_h::inode; params_h::NINODE as usize] = unsafe { mem::zeroed() };
 
 pub unsafe fn iinit() {
     ICACHE_LOCK.init(b"icache\0".as_ptr());
 }
 
 // iget forward
-unsafe fn iget(dev: uint, inum: uint) -> *mut crate::inode::inode {
+unsafe fn iget(dev: uint, inum: uint) -> *mut file_h::inode {
     // acquire lock
     ICACHE_LOCK.acquire();
 
-    let mut empty: *mut crate::inode::inode = core::ptr::null_mut();
+    let mut empty: *mut file_h::inode = core::ptr::null_mut();
     let mut i: usize = 0;
     let base = ICACHE_INODE.as_mut_ptr();
 
-    while i < crate::param_h::NINODE as usize {
+    while i < crate::params_h::NINODE as usize {
         let ip = base.add(i);
-        if (*ip).refcnt > 0 && (*ip).dev == dev && (*ip).inum == inum {
-            (*ip).refcnt = (*ip).refcnt.wrapping_add(1);
+        if (*ip).ref_count > 0 && (*ip).dev == dev && (*ip).inum == inum {
+            (*ip).ref_count = (*ip).ref_count.wrapping_add(1);
             ICACHE_LOCK.release();
             return ip;
         }
-        if empty.is_null() && (*ip).refcnt == 0 {
+        if empty.is_null() && (*ip).ref_count == 0 {
             empty = ip;
         }
         i += 1;
@@ -165,7 +166,7 @@ unsafe fn iget(dev: uint, inum: uint) -> *mut crate::inode::inode {
     let ip = empty;
     (*ip).dev = dev;
     (*ip).inum = inum;
-    (*ip).refcnt = 1;
+    (*ip).ref_count = 1;
     (*ip).flags = 0;
     ICACHE_LOCK.release();
     ip
@@ -173,7 +174,7 @@ unsafe fn iget(dev: uint, inum: uint) -> *mut crate::inode::inode {
 
 // Allocate a new inode with the given type on device dev.
 // A free inode has a type of zero.
-pub unsafe fn ialloc(dev: uint, typ: i16) -> *mut crate::inode::inode {
+pub unsafe fn ialloc(dev: uint, typ: uint16) -> *mut file_h::inode {
     let mut inum: uint = 1;
     let mut bp: *mut buf_h::buf;
     let mut dip: *mut fs_h::dinode;
@@ -182,7 +183,7 @@ pub unsafe fn ialloc(dev: uint, typ: i16) -> *mut crate::inode::inode {
     readsb(dev as uint, &mut sb as *mut fs_h::superblock);
 
     while (inum as uint) < sb.ninodes {
-        bp = bread(dev as uint, fs_h::IBLOCK(inum as uint));
+        bp = bread(dev as uint, fs_h::iblock(inum as uint));
         dip = ((*bp).data.as_mut_ptr() as *mut fs_h::dinode).add((inum as usize) % (fs_h::IPB as usize));
 
         if (*dip).type_ == 0 {
@@ -202,8 +203,8 @@ pub unsafe fn ialloc(dev: uint, typ: i16) -> *mut crate::inode::inode {
 }
 
 // Copy a modified in-memory inode to disk.
-pub unsafe fn iupdate(ip: *mut crate::inode::inode) {
-    let bp = bread((*ip).dev as uint, fs_h::IBLOCK((*ip).inum));
+pub unsafe fn iupdate(ip: *mut file_h::inode) {
+    let bp = bread((*ip).dev as uint, fs_h::iblock((*ip).inum));
     let dip = ((*bp).data.as_mut_ptr() as *mut fs_h::dinode).add(((*ip).inum as usize) % (fs_h::IPB as usize));
 
     (*dip).type_ = (*ip).type_;
@@ -223,34 +224,34 @@ pub unsafe fn iupdate(ip: *mut crate::inode::inode) {
 }
 
 // Increment reference count for ip. Returns ip to enable idiom.
-pub unsafe fn idup(ip: *mut crate::inode::inode) -> *mut crate::inode::inode {
+pub unsafe fn idup(ip: *mut file_h::inode) -> *mut file_h::inode {
     ICACHE_LOCK.acquire();
-    (*ip).refcnt = (*ip).refcnt.wrapping_add(1);
+    (*ip).ref_count = (*ip).ref_count.wrapping_add(1);
     ICACHE_LOCK.release();
     ip
 }
 
 // Lock the given inode. Reads the inode from disk if necessary.
-pub unsafe fn ilock(ip: *mut crate::inode::inode) {
+pub unsafe fn ilock(ip: *mut file_h::inode) {
     let mut bp: *mut buf_h::buf;
     let mut dip: *mut fs_h::dinode;
 
-    if ip.is_null() || (*ip).refcnt < 1 {
+    if ip.is_null() || (*ip).ref_count < 1 {
         panic(b"ilock\0".as_ptr() as *const uint8);
     }
 
     ICACHE_LOCK.acquire();
-    while ((*ip).flags & crate::inode_h::I_BUSY) != 0 {
+    while ((*ip).flags & file_h::I_BUSY) != 0 {
         // sleep(ip, &icache.lock)
         // Assume sleep is available
         crate::sleep_h::sleep(ip as *mut c_void, &ICACHE_LOCK as *const _ as *mut spinlock_h::spinlock);
     }
 
-    (*ip).flags |= crate::inode_h::I_BUSY;
+    (*ip).flags |= file_h::I_BUSY;
     ICACHE_LOCK.release();
 
-    if ((*ip).flags & crate::inode_h::I_VALID) == 0 {
-        bp = bread((*ip).dev as uint, fs_h::IBLOCK((*ip).inum));
+    if ((*ip).flags & file_h::I_VALID) == 0 {
+        bp = bread((*ip).dev as uint, fs_h::iblock((*ip).inum));
         dip = ((*bp).data.as_mut_ptr() as *mut fs_h::dinode).add(((*ip).inum as usize) % (fs_h::IPB as usize));
 
         (*ip).type_ = (*dip).type_;
@@ -266,7 +267,7 @@ pub unsafe fn ilock(ip: *mut crate::inode::inode) {
         );
 
         brelse(bp);
-        (*ip).flags |= crate::inode_h::I_VALID;
+        (*ip).flags |= file_h::I_VALID;
 
         if (*ip).type_ == 0 {
             panic(b"ilock: no type\0".as_ptr() as *const uint8);
@@ -275,28 +276,28 @@ pub unsafe fn ilock(ip: *mut crate::inode::inode) {
 }
 
 // Unlock the given inode.
-pub unsafe fn iunlock(ip: *mut crate::inode::inode) {
-    if ip.is_null() || ((*ip).flags & crate::inode_h::I_BUSY) == 0 || (*ip).refcnt < 1 {
+pub unsafe fn iunlock(ip: *mut file_h::inode) {
+    if ip.is_null() || ((*ip).flags & file_h::I_BUSY) == 0 || (*ip).ref_count < 1 {
         panic(b"iunlock\0".as_ptr() as *const uint8);
     }
 
     ICACHE_LOCK.acquire();
-    (*ip).flags &= !crate::inode_h::I_BUSY;
+    (*ip).flags &= !file_h::I_BUSY;
     // wakeup(ip)
     crate::sleep_h::wakeup(ip as *mut c_void);
     ICACHE_LOCK.release();
 }
 
 // Drop a reference to an in-memory inode.
-pub unsafe fn iput(ip: *mut crate::inode::inode) {
+pub unsafe fn iput(ip: *mut file_h::inode) {
     ICACHE_LOCK.acquire();
 
-    if (*ip).refcnt == 1 && ((*ip).flags & crate::inode_h::I_VALID) != 0 && (*ip).nlink == 0 {
-        if ((*ip).flags & crate::inode_h::I_BUSY) != 0 {
+    if (*ip).ref_count == 1 && ((*ip).flags & file_h::I_VALID) != 0 && (*ip).nlink == 0 {
+        if ((*ip).flags & file_h::I_BUSY) != 0 {
             panic(b"iput busy\0".as_ptr() as *const uint8);
         }
 
-        (*ip).flags |= crate::inode_h::I_BUSY;
+        (*ip).flags |= file_h::I_BUSY;
         ICACHE_LOCK.release();
         itrunc(ip);
         (*ip).type_ = 0;
@@ -307,12 +308,12 @@ pub unsafe fn iput(ip: *mut crate::inode::inode) {
         crate::sleep_h::wakeup(ip as *mut c_void);
     }
 
-    (*ip).refcnt = (*ip).refcnt.wrapping_sub(1);
+    (*ip).ref_count = (*ip).ref_count.wrapping_sub(1);
     ICACHE_LOCK.release();
 }
 
 // Common idiom: unlock, then put.
-pub unsafe fn iunlockput(ip: *mut crate::inode::inode) {
+pub unsafe fn iunlockput(ip: *mut file_h::inode) {
     iunlock(ip);
     iput(ip);
 }
@@ -321,7 +322,7 @@ pub unsafe fn iunlockput(ip: *mut crate::inode::inode) {
 
 // Return the disk block address of the nth block in inode ip.
 // If there is no such block, bmap allocates one.
-unsafe fn bmap(ip: *mut crate::inode::inode, mut bn: uint) -> uint {
+unsafe fn bmap(ip: *mut file_h::inode, mut bn: uint) -> uint {
     let mut addr: uint;
     let mut a: *mut uint;
     let mut bp: *mut buf_h::buf;
@@ -361,7 +362,7 @@ unsafe fn bmap(ip: *mut crate::inode::inode, mut bn: uint) -> uint {
 }
 
 // Truncate inode (discard contents).
-unsafe fn itrunc(ip: *mut crate::inode::inode) {
+unsafe fn itrunc(ip: *mut file_h::inode) {
     let mut i: usize;
     let mut j: usize;
     let mut bp: *mut buf_h::buf;
@@ -396,7 +397,7 @@ unsafe fn itrunc(ip: *mut crate::inode::inode) {
 }
 
 // Copy stat information from inode.
-pub unsafe fn stati(ip: *mut crate::inode::inode, st: *mut stat_h::stat) {
+pub unsafe fn stati(ip: *mut file_h::inode, st: *mut stat_h::stat) {
     (*st).dev = (*ip).dev;
     (*st).ino = (*ip).inum;
     (*st).type_ = (*ip).type_;
@@ -405,15 +406,15 @@ pub unsafe fn stati(ip: *mut crate::inode::inode, st: *mut stat_h::stat) {
 }
 
 // Read data from inode.
-pub unsafe fn readi(ip: *mut crate::inode::inode, dst: *mut u8, mut off: uint, mut n: uint) -> uint {
+pub unsafe fn readi(ip: *mut file_h::inode, dst: *mut u8, mut off: uint, mut n: uint) -> i32 {
     let mut tot: uint = 0;
     let mut m: uint;
     let mut bp: *mut buf_h::buf;
 
     // device file
-    if (*ip).type_ == crate::file_h::T_DEV {
+    if (*ip).type_ == stat_h::T_DEV {
         let major = (*ip).major as usize;
-        if (*ip).major < 0 || (*ip).major >= crate::param_h::NDEV as i16 {
+        if (*ip).major < 0 || (*ip).major >= params_h::NDEV as uint16 {
             return -1;
         }
         let devsw_ptr = devsw as *const crate::dev_h::devsw;
@@ -448,18 +449,18 @@ pub unsafe fn readi(ip: *mut crate::inode::inode, dst: *mut u8, mut off: uint, m
         off = off.wrapping_add(m);
     }
 
-    n as uint
+    n as i32
 }
 
 // Write data to inode.
-pub unsafe fn writei(ip: *mut crate::inode::inode, src: *const u8, mut off: uint, mut n: uint) -> uint {
+pub unsafe fn writei(ip: *mut file_h::inode, src: *const u8, mut off: uint, mut n: uint) -> i32 {
     let mut tot: uint = 0;
     let mut m: uint;
     let mut bp: *mut buf_h::buf;
 
-    if (*ip).type_ == crate::file_h::T_DEV {
+    if (*ip).type_ == stat_h::T_DEV {
         let major = (*ip).major as usize;
-        if (*ip).major < 0 || (*ip).major >= crate::param_h::NDEV as i16 {
+        if (*ip).major < 0 || (*ip).major >= params_h::NDEV as uint16 {
             return -1;
         }
         let devsw_ptr = devsw as *const crate::dev_h::devsw;
@@ -499,7 +500,7 @@ pub unsafe fn writei(ip: *mut crate::inode::inode, src: *const u8, mut off: uint
         iupdate(ip);
     }
 
-    n as uint
+    n as i32
 }
 
 // Directories
@@ -510,12 +511,12 @@ pub unsafe fn namecmp(s: *const uint8, t: *const uint8) -> uint {
 
 // Look for a directory entry in a directory.
 // If found, set *poff to byte offset of entry.
-pub unsafe fn dirlookup(dp: *mut crate::inode::inode, name: *const uint8, poff: *mut uint) -> *mut crate::inode::inode {
+pub unsafe fn dirlookup(dp: *mut file_h::inode, name: *const uint8, poff: *mut uint) -> *mut file_h::inode {
     let mut off: uint = 0;
     let mut inum: uint;
     let mut de: fs_h::dirent = mem::zeroed();
 
-    if (*dp).type_ != crate::file_h::T_DIR {
+    if (*dp).type_ != stat_h::T_DIR {
         panic(b"dirlookup not DIR\0".as_ptr() as *const uint8);
     }
 
@@ -534,7 +535,7 @@ pub unsafe fn dirlookup(dp: *mut crate::inode::inode, name: *const uint8, poff: 
             if !poff.is_null() {
                 *poff = off;
             }
-            inum = de.inum;
+            inum = de.inum as u32;
             return iget((*dp).dev, inum);
         }
 
@@ -545,10 +546,10 @@ pub unsafe fn dirlookup(dp: *mut crate::inode::inode, name: *const uint8, poff: 
 }
 
 // Write a new directory entry (name, inum) into the directory dp.
-pub unsafe fn dirlink(dp: *mut crate::inode::inode, name: *const uint8, inum: uint) -> uint {
+pub unsafe fn dirlink(dp: *mut file_h::inode, name: *const uint8, inum: uint) -> i32 {
     let mut off: uint = 0;
     let mut de: fs_h::dirent = mem::zeroed();
-    let mut ip: *mut crate::inode::inode;
+    let mut ip: *mut file_h::inode;
 
     // Check that name is not present.
     ip = dirlookup(dp, name, core::ptr::null_mut());
@@ -573,7 +574,7 @@ pub unsafe fn dirlink(dp: *mut crate::inode::inode, name: *const uint8, inum: ui
     // strncpy(de.name, name, DIRSIZ)
     // name is a C string pointer
     strncpy(de.name.as_mut_ptr() as *mut uint8, name, fs_h::DIRSIZ as usize);
-    de.inum = inum;
+    de.inum = inum as u16;
 
     if writei(dp, (&de) as *const fs_h::dirent as *const u8, off as uint, mem::size_of::<fs_h::dirent>() as uint) != mem::size_of::<fs_h::dirent>() as uint {
         panic(b"dirlink\0".as_ptr() as *const uint8);
@@ -621,12 +622,12 @@ unsafe fn skipelem(mut path: *const uint8, name: *mut uint8) -> *const uint8 {
 }
 
 // Look up and return the inode for a path name.
-unsafe fn namex(path: *const uint8, nameiparent: uint, name: *mut uint8) -> *mut crate::inode::inode {
-    let mut ip: *mut crate::inode::inode;
-    let mut next: *mut crate::inode::inode;
+unsafe fn namex(path: *const uint8, nameiparent: uint, name: *mut uint8) -> *mut file_h::inode {
+    let mut ip: *mut file_h::inode;
+    let mut next: *mut file_h::inode;
 
     if *path == b'/' as uint8 {
-        ip = iget(crate::param_h::ROOTDEV as uint, fs_h::ROOTINO);
+        ip = iget(params_h::ROOTDEV as uint, fs_h::ROOTINO);
     } else {
         ip = idup((*proc).cwd);
     }
@@ -638,7 +639,7 @@ unsafe fn namex(path: *const uint8, nameiparent: uint, name: *mut uint8) -> *mut
     } {
         ilock(ip);
 
-        if (*ip).type_ != crate::file_h::T_DIR {
+        if (*ip).type_ != stat_h::T_DIR {
             iunlockput(ip);
             return core::ptr::null_mut();
         }
@@ -666,11 +667,11 @@ unsafe fn namex(path: *const uint8, nameiparent: uint, name: *mut uint8) -> *mut
     ip
 }
 
-pub unsafe fn namei(path: *const uint8) -> *mut crate::inode::inode {
+pub unsafe fn namei(path: *const uint8) -> *mut file_h::inode {
     let mut name_buf: [uint8; fs_h::DIRSIZ as usize] = [0; fs_h::DIRSIZ as usize];
     namex(path, 0, name_buf.as_mut_ptr())
 }
 
-pub unsafe fn nameiparent(path: *const uint8, name: *mut uint8) -> *mut crate::inode::inode {
+pub unsafe fn nameiparent(path: *const uint8, name: *mut uint8) -> *mut file_h::inode {
     namex(path, 1, name)
 }
