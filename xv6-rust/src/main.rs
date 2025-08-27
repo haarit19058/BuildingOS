@@ -53,8 +53,8 @@ mod file;
 // use crate::{
 //     arm_h::*,        // UART0, VIC_BASE, P2V, P2V_WO, etc.
 //     // defs::*,       // function declarations (if you keep them here)
-//     memlayout_h::*,  // INIT_KERNMAP, PHYSTOP
-//     mmu_h::*,        // paging_init, PT_SZ, PDE_MASK, etc.
+    use crate::memlayout_h::*; // INIT_KERNMAP, PHYSTOP
+    // mmu_h::*,        // paging_init, PT_SZ, PDE_MASK, etc.
 //     param_h::*,      // NCPU
 //     proc_h::*,       // proc_h::cpu struct
 //     // other modules (vm, console, device drivers, etc.)
