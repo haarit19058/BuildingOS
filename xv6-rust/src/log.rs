@@ -1,5 +1,4 @@
 use crate::types_h::*;
-// use crate::defs::*;
 use crate::param_h::*;
 use crate::spinlock_h::*;
 use crate::fs_h::*;
@@ -12,7 +11,7 @@ struct LogHeader {
     sector: [u32; LOGSIZE],
 }
 
-/// The main log structure
+/// Main log structure
 pub struct Log {
     pub lock: SpinLock,
     pub start: u32,
@@ -22,6 +21,7 @@ pub struct Log {
     pub lh: LogHeader,
 }
 
+/// Global log instance
 pub static mut LOG: Log = Log {
     lock: SpinLock::new(),
     start: 0,
@@ -34,29 +34,35 @@ pub static mut LOG: Log = Log {
 /// Initialize the log system
 pub fn initlog() {
     let mut sb = SuperBlock::default();
-    
+
     unsafe {
         if core::mem::size_of::<LogHeader>() >= BSIZE {
-            panic!("initlog: too big logheader");
+            panic!("initlog: log header too large");
         }
 
         initlock(&mut LOG.lock, b"log\0");
         readsb(ROOTDEV, &mut sb);
 
+        acquire(&mut LOG.lock);
         LOG.start = sb.size - sb.nlog;
         LOG.size = sb.nlog;
         LOG.dev = ROOTDEV;
+        release(&mut LOG.lock);
 
         recover_from_log();
     }
 }
 
-/// Copy committed blocks from log to their home locations
+/// Copy committed log blocks to their home locations
 fn install_trans() {
     unsafe {
-        for tail in 0..LOG.lh.n {
-            let lbuf = bread(LOG.dev, LOG.start + tail as u32 + 1);
-            let dbuf = bread(LOG.dev, LOG.lh.sector[tail] as u32);
+        acquire(&mut LOG.lock);
+        let n = LOG.lh.n;
+        release(&mut LOG.lock);
+
+        for i in 0..n {
+            let lbuf = bread(LOG.dev, LOG.start + i as u32 + 1);
+            let dbuf = bread(LOG.dev, LOG.lh.sector[i]);
 
             unsafe {
                 core::ptr::copy_nonoverlapping(lbuf.data.as_ptr(), dbuf.data.as_mut_ptr(), BSIZE);
@@ -69,42 +75,52 @@ fn install_trans() {
     }
 }
 
-/// Read the log header from disk into in-memory log header
+/// Read log header from disk into memory
 fn read_head() {
     unsafe {
         let buf = bread(LOG.dev, LOG.start);
         let lh_ptr = buf.data.as_ptr() as *const LogHeader;
-        LOG.lh.n = (*lh_ptr).n;
 
+        acquire(&mut LOG.lock);
+        LOG.lh.n = (*lh_ptr).n;
         for i in 0..LOG.lh.n {
             LOG.lh.sector[i] = (*lh_ptr).sector[i];
         }
+        release(&mut LOG.lock);
 
         brelse(buf);
     }
 }
 
-/// Write in-memory log header to disk (commit point)
+/// Write in-memory log header to disk
 fn write_head() {
     unsafe {
         let buf = bread(LOG.dev, LOG.start);
-        let hb_ptr = buf.data.as_mut_ptr() as *mut LogHeader;
+        let lh_ptr = buf.data.as_mut_ptr() as *mut LogHeader;
 
-        (*hb_ptr).n = LOG.lh.n;
+        acquire(&mut LOG.lock);
+        (*lh_ptr).n = LOG.lh.n;
         for i in 0..LOG.lh.n {
-            (*hb_ptr).sector[i] = LOG.lh.sector[i];
+            (*lh_ptr).sector[i] = LOG.lh.sector[i];
         }
+        release(&mut LOG.lock);
 
         bwrite(buf);
         brelse(buf);
     }
 }
 
-/// Recover from any committed log entries at boot
+/// Recover any committed log entries at boot
 fn recover_from_log() {
     read_head();
     install_trans();
-    unsafe { LOG.lh.n = 0; }
+
+    unsafe {
+        acquire(&mut LOG.lock);
+        LOG.lh.n = 0;
+        release(&mut LOG.lock);
+    }
+
     write_head();
 }
 
@@ -123,11 +139,19 @@ pub fn begin_trans() {
 /// Commit the current transaction
 pub fn commit_trans() {
     unsafe {
-        if LOG.lh.n > 0 {
-            write_head();    // Commit header
-            install_trans(); // Copy log blocks to their locations
+        acquire(&mut LOG.lock);
+        let n = LOG.lh.n;
+        release(&mut LOG.lock);
+
+        if n > 0 {
+            write_head();
+            install_trans();
+
+            acquire(&mut LOG.lock);
             LOG.lh.n = 0;
-            write_head();    // Clear log
+            release(&mut LOG.lock);
+
+            write_head();
         }
 
         acquire(&mut LOG.lock);
@@ -140,14 +164,19 @@ pub fn commit_trans() {
 /// Append a modified buffer to the log
 pub fn log_write(b: &mut Buf) {
     unsafe {
+        acquire(&mut LOG.lock);
+
         if LOG.lh.n >= LOGSIZE || LOG.lh.n >= LOG.size as usize - 1 {
-            panic!("too big a transaction");
+            release(&mut LOG.lock);
+            panic!("log_write: transaction too large");
         }
 
         if !LOG.busy {
-            panic!("write outside of trans");
+            release(&mut LOG.lock);
+            panic!("log_write outside transaction");
         }
 
+        // Find existing entry
         let mut i = 0;
         while i < LOG.lh.n {
             if LOG.lh.sector[i] == b.sector {
@@ -157,19 +186,21 @@ pub fn log_write(b: &mut Buf) {
         }
 
         LOG.lh.sector[i] = b.sector;
+
+        release(&mut LOG.lock);
+
+        // Copy buffer into log
         let lbuf = bread(b.dev, LOG.start + i as u32 + 1);
-
-        unsafe {
-            core::ptr::copy_nonoverlapping(b.data.as_ptr(), lbuf.data.as_mut_ptr(), BSIZE);
-        }
-
+        core::ptr::copy_nonoverlapping(b.data.as_ptr(), lbuf.data.as_mut_ptr(), BSIZE);
         bwrite(lbuf);
         brelse(lbuf);
 
+        acquire(&mut LOG.lock);
         if i == LOG.lh.n {
             LOG.lh.n += 1;
         }
+        release(&mut LOG.lock);
 
-        b.flags |= B_DIRTY; // prevent eviction
+        b.flags |= B_DIRTY;
     }
 }

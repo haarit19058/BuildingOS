@@ -40,20 +40,27 @@ mod spinlock_h;
 mod arm;
 
 mod buddy;
-
+mod memide;
 mod fs;
 mod fs_h;
 mod buf_h;
 mod file_h;
 mod stat_h;
 mod file;
+mod trap;
+mod picirq;
+mod syscall_h;
+mod proc;
+mod bio;
+mod log;
+// mod trap_h;
 
 
 
+// use crate::memlayout_h; // memlayout_h::INIT_KERNMAP, versatile_pb_h::PHYSTOP
 // use crate::{
-//     arm_h::*,        // UART0, VIC_BASE, P2V, P2V_WO, etc.
+//     arm_h::*,        // UART0, VIC_BASE, memlayout_h::P2V, P2V_WO, etc.
 //     // defs::*,       // function declarations (if you keep them here)
-    use crate::memlayout_h::*; // INIT_KERNMAP, PHYSTOP
     // mmu_h::*,        // paging_init, PT_SZ, PDE_MASK, etc.
 //     param_h::*,      // NCPU
 //     proc_h::*,       // proc_h::cpu struct
@@ -90,8 +97,8 @@ pub extern "C" fn kmain() -> ! {
         cpu = &mut cpus[0] as *mut proc_h::cpu;
 
         // Initialize UART (device/uart.c equivalent)
-        // P2V is assumed to convert physical to virtual addresses as in your environment.
-        // uart::uart_init(memlayout_h::P2V(versatile_pb_h::UART0));
+        // memlayout_h::P2V is assumed to convert physical to virtual addresses as in your environment.
+        // uart::uart_init(memlayout_h::memlayout_h::P2V(versatile_pb_h::UART0));
 
         // Interrupt vector table is in the middle of first 1MB. We use the leftover for page tables.
         // VEC_TBL & PDE_MASK is a constant expression similar to the C version.
@@ -105,47 +112,35 @@ pub extern "C" fn kmain() -> ! {
         // `end` is a linker symbol; get its address as a u32 and align up to PT_SZ.
         // align_up is expected to be defined elsewhere and returns an address (u32).
         let end_addr = &end as *const u8 as u32;
-        let start_free = align_up(end_addr, PT_SZ);
+        let start_free = mmu_h::align_up(end_addr, mmu_h::PT_SZ);
 
         // Custom memory allocator setup for ARM (kpt_freerange expects addresses)
-        kpt_freerange(start_free, vectbl);
-        kpt_freerange(vectbl + PT_SZ, P2V_WO(INIT_KERNMAP));
-        paging_init(INIT_KERNMAP, PHYSTOP);
-        kmem_init();
-        kmem_init2(P2V(INIT_KERNMAP), P2V(PHYSTOP));
+        vm::kpt_freerange(start_free, vectbl);
+        vm::kpt_freerange(vectbl + mmu_h::PT_SZ, memlayout_h::P2V_WO(memlayout_h::memlayout_h::INIT_KERNMAP));
+        vm::paging_init(memlayout_h::INIT_KERNMAP, params_h::versatile_pb_h::PHYSTOP);
+        buddy::kmem_init();
+        buddy::kmem_init2(memlayout_h::P2V(memlayout_h::INIT_KERNMAP), memlayout_h::P2V(versatile_pb_h::PHYSTOP));
 
         // Trap/interrupt and device initialization
-        trap_init();                 // vector table and stacks for models
-        pic_init(P2V(VIC_BASE));     // interrupt controller
-        uart_enable_rx();            // enable UART RX interrupt
+        trap::trap_init();                 // vector table and stacks for models
+        picirq::pic_init(memlayout_h::P2V(picirq::VIC_BASE));     // interrupt controller
+        uart::uart_enable_rx();            // enable UART RX interrupt
 
-        consoleinit();               // init console
-        pinit();                     // process table (locks)
+        proc::consoleinit();               // init console
+        proc::pinit();                     // process table (locks)
 
-        binit();                     // buffer cache
-        fileinit();                  // file table
-        iinit();                     // inode cache
-        ideinit();                   // IDE device init
-        timer_init(HZ);              // initialize the timer ticker
+        bio::binit();                     // buffer cache
+        file::fileinit();                  // file table
+        fs::iinit();                     // inode cache
+        memide::ideinit();                   // IDE device init
+        timer::timer_init(params_h::HZ);              // initialize the timer ticker
 
         // Enable interrupts (sti)
-        sti();
+        arm::sti();
 
         // Start the first user process and scheduler
-        userinit();                  // create first user process
-        scheduler();                 // start running processes
-
-        // kmain in kernel never returns; spin forever as a fallback.
-        loop {
-            // halt or wait for interrupt - prefer architecture-specific wfi or similar
-            cpu_relax();
-        }
+        proc::userinit();                  // create first user process
+        proc::scheduler();                 // start running processes
     }
 }
 
-#[inline(always)]
-fn cpu_relax() {
-    // If you have an architecture instruction like `wfi`, call it here.
-    // Otherwise a simple compiler hint:
-    core::sync::atomic::spin_loop_hint();
-}

@@ -1,20 +1,18 @@
-#![no_std]
-#![no_main]
 
 use core::arch::asm;
 use core::ptr;
 
-use crate::proc_h::*;
-use crate::syscall_h::*;
-use crate::printf::*;
-use crate::mem_h::*;
+// use crate::proc_h::*;
+// use crate::syscall_h::*;
+// use crate::printf::*;
+// use crate::mem_h::*;
 // use crate::panic::panic;
-use crate::arm_h::*; // constants: IRQ_MODE, FIQ_MODE, etc.
-use crate::syscall_h::*;
+// use crate::arm_h::*; // constants: IRQ_MODE, FIQ_MODE, etc.
+// use crate::syscall_h::*;
 
 /// SWI handler
 #[no_mangle]
-pub extern "C" fn swi_handler(tf: &mut TrapFrame) {
+pub extern "C" fn swi_handler(tf: &mut trapframe) {
     if let Some(p) = current_proc() {
         p.tf = tf;
     }
@@ -23,7 +21,7 @@ pub extern "C" fn swi_handler(tf: &mut TrapFrame) {
 
 /// IRQ handler
 #[no_mangle]
-pub extern "C" fn irq_handler(tf: &mut TrapFrame) {
+pub extern "C" fn irq_handler(tf: &mut trapframe) {
     if let Some(p) = current_proc() {
         p.tf = tf;
     }
@@ -32,21 +30,21 @@ pub extern "C" fn irq_handler(tf: &mut TrapFrame) {
 
 /// Reset handler
 #[no_mangle]
-pub extern "C" fn reset_handler(tf: &TrapFrame) {
+pub extern "C" fn reset_handler(tf: &trapframe) {
     unsafe { cli(); }
     cprintf("reset at: 0x{:x}\n", tf.pc);
 }
 
 /// Undefined instruction handler
 #[no_mangle]
-pub extern "C" fn und_handler(tf: &TrapFrame) {
+pub extern "C" fn und_handler(tf: &trapframe) {
     unsafe { cli(); }
     cprintf("und at: 0x{:x}\n", tf.pc);
 }
 
 /// Data abort handler
 #[no_mangle]
-pub extern "C" fn dabort_handler(tf: &TrapFrame) {
+pub extern "C" fn dabort_handler(tf: &trapframe) {
     let dfs: u32;
     let fa: u32;
 
@@ -64,7 +62,7 @@ pub extern "C" fn dabort_handler(tf: &TrapFrame) {
 
 /// Prefetch abort handler
 #[no_mangle]
-pub extern "C" fn iabort_handler(tf: &TrapFrame) {
+pub extern "C" fn iabort_handler(tf: &trapframe) {
     let ifs: u32;
     unsafe {
         asm!("MRC p15, 0, {0}, c5, c0, 0", out(reg) ifs);
@@ -76,14 +74,14 @@ pub extern "C" fn iabort_handler(tf: &TrapFrame) {
 
 /// Not assigned handler
 #[no_mangle]
-pub extern "C" fn na_handler(tf: &TrapFrame) {
+pub extern "C" fn na_handler(tf: &trapframe) {
     unsafe { cli(); }
     cprintf("n/a at: 0x{:x}\n", tf.pc);
 }
 
 /// FIQ handler
 #[no_mangle]
-pub extern "C" fn fiq_handler(tf: &TrapFrame) {
+pub extern "C" fn fiq_handler(tf: &trapframe) {
     unsafe { cli(); }
     cprintf("fiq at: 0x{:x}\n", tf.pc);
 }
@@ -126,7 +124,7 @@ pub fn trap_init() {
 }
 
 /// Dump trapframe registers
-pub fn dump_trapframe(tf: &TrapFrame) {
+pub fn dump_trapframe(tf: &trapframe) {
     cprintf("r14_svc: 0x{:x}\n", tf.r14_svc);
     cprintf("   spsr: 0x{:x}\n", tf.spsr);
     cprintf("     r0: 0x{:x}\n", tf.r0);

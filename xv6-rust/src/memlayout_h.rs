@@ -10,7 +10,7 @@ pub type uchar = u8;
 pub const NULL: *mut core::ffi::c_void = core::ptr::null_mut();
 
 // use crate::pra
-use core::ffi::c_void;
+// use core::ffi::c_void;
 use crate::types_h; // assumes `pub type types_h::uint = u32;` etc.
 
 /// Key addresses for address space layout (see kmap in vm.c for layout)
@@ -35,7 +35,7 @@ pub const INIT_KERNMAP:u32 = 0x00_100000;      // 1 MB
 /// Convert a kernel virtual pointer to a physical address (returns `types_h::uint`, i.e. u32).
 /// Safety: `a` must be a kernel virtual pointer (>= KERNBASE).
 #[inline(always)]
-pub fn v2p(a: *const c_void) -> types_h::uint {
+pub fn v2p(a: *const uint) -> types_h::uint {
     // Do arithmetic in u32, then cast to types_h::uint (u32) to match original `types_h::uint`.
     // On a 32-bit target this is direct; on 64-bit, caller must ensure value fits.
     ((a as u32).wrapping_sub(KERNBASE)) as types_h::uint
@@ -44,8 +44,8 @@ pub fn v2p(a: *const c_void) -> types_h::uint {
 /// Convert a physical address (types_h::uint / u32) to a kernel virtual pointer.
 /// Safety: the resulting pointer is a kernel virtual address (KERNBASE + a).
 #[inline(always)]
-pub fn p2v(a: types_h::uint) -> *mut c_void {
-    ( (a as u32).wrapping_add(KERNBASE) ) as *mut c_void
+pub fn p2v(a: types_h::uint) -> *mut uint {
+    ( (a as u32).wrapping_add(KERNBASE) ) as *mut uint
 }
 
 /// Variants that operate on u32 (no casts). Useful inside low-level code
@@ -58,10 +58,10 @@ pub fn p2v_usize(a: u32) -> u32 { a.wrapping_add(KERNBASE) }
 
 /// "Macro-like" names to match the original C macros (just function aliases)
 #[inline(always)]
-pub fn V2P(a: *const c_void) -> types_h::uint { v2p(a) }
+pub fn V2P(a: *const uint) -> types_h::uint { v2p(a) }
 
 #[inline(always)]
-pub fn P2V(a: types_h::uint) -> *mut c_void { p2v(a) }
+pub fn P2V(a: types_h::uint) -> *mut uint { p2v(a) }
 
 #[inline(always)]
 pub fn V2P_WO(x: u32) -> u32 { v2p_usize(x) }

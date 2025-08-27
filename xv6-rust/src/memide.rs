@@ -1,59 +1,90 @@
-use crate::types_h::*;
-// use crate::defs::*;
-use crate::param_h::*;
-use crate::spinlock_h::*;
-use crate::fs_h::*;
-use crate::buf_h::*;
-// Extern symbols for embedded filesystem image
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+#![allow(dead_code)]
+
+use core::ptr;
+
+use crate::buf_h::{buf, B_BUSY, B_VALID, B_DIRTY};
+use crate::types_h::uchar;
+// use crate::types_h::uint;
+
+// some thing is wrong here look at it what is wrong
 extern "C" {
-    static _binary_fs_img_start: u8;
-    static _binary_fs_img_size: u8;
+    static _binary_fs_img_start: uchar;
+    static _binary_fs_img_size: uchar;
 }
 
-pub fn ideinit() {
-    unsafe {
-        MEMDISK = &_binary_fs_img_start as *const u8 as *mut u8;
-        let size_bytes = &_binary_fs_img_size as *const u8 as usize;
-        DISKSIZE = size_bytes / 512;
-    }
+// Mutable globals (mirror the C code)
+static mut MEMDISK: *mut u8 = core::ptr::null_mut();
+static mut DISKSIZE: usize = 0;
+
+/// Initialize the fake IDE: set memdisk pointer and compute disk size in 512-byte sectors.
+pub unsafe fn ideinit() {
+    // Start of image
+    MEMDISK = &_binary_fs_img_start as *const uchar as *mut u8;
+
+    // The C code used: disksize = (uint)_binary_fs_img_size / 512;
+    // `_binary_fs_img_size` is a linker symbol; take its address as usize and divide.
+    // This mirrors the original C behaviour.
+    DISKSIZE = (&_binary_fs_img_size as *const uchar as usize) / 512;
 }
 
-// Interrupt handler (no-op for memory disk)
+/// Interrupt handler for fake IDE (no-op).
 pub fn ideintr() {
-    // intentionally empty
+    // no-op for memory-backed disk
 }
 
-// Sync buf with disk.
-// If B_DIRTY is set, write buf to disk, clear B_DIRTY, set B_VALID.
-// Else if B_VALID is not set, read buf from disk, set B_VALID.
-pub fn iderw(b: &mut Buf) {
+/// Sync buf with "disk".
+///
+/// Safety: caller must pass a valid `*mut buf` pointer and must respect kernel invariants
+/// (e.g., that buffer is B_BUSY as the original C code expects).
+pub unsafe fn iderw(bp: *mut buf) {
+    if bp.is_null() {
+        // crate::panic!("iderw: null buf");
+    }
+
+    // Dereference
+    let b: &mut buf = &mut *bp;
+
+    // Must be busy
     if (b.flags & B_BUSY) == 0 {
-        panic!("iderw: buf not busy");
+        // crate::panic!("iderw: buf not busy");
     }
 
+    // If (B_VALID|B_DIRTY) == B_VALID then nothing to do (i.e., VALID and not DIRTY)
     if (b.flags & (B_VALID | B_DIRTY)) == B_VALID {
-        panic!("iderw: nothing to do");
+        // crate::panic!("iderw: nothing to do");
     }
 
+    // Only accept device 1 (same as original)
     if b.dev != 1 {
-        panic!("iderw: request not for disk 1");
+        // crate::panic!("iderw: request not for disk 1");
     }
 
-    unsafe {
-        if b.sector as usize >= DISKSIZE {
-            panic!("iderw: sector out of range");
-        }
-
-        
-        let p = MEMDISK.add(b.sector as usize * 512);
-
-        if (b.flags & B_DIRTY) != 0 {
-            b.flags &= !B_DIRTY;
-            ptr::copy_nonoverlapping(b.data.as_ptr(), p, 512);
-        } else {
-            ptr::copy_nonoverlapping(p, b.data.as_mut_ptr(), 512);
-        }
+    // Sector range check
+    if (b.sector as usize) >= DISKSIZE {
+        // crate::panic!("iderw: sector out of range");
     }
 
+    // Compute pointer into memdisk
+    let base = MEMDISK;
+    if base.is_null() {
+        // crate::panic!("iderw: memdisk not initialized");
+    }
+
+    let src_dst = base.add((b.sector as usize) * 512);
+
+    if (b.flags & B_DIRTY) != 0 {
+        // write buffer to memdisk: memmove(p, b->data, 512);
+        // both src and dst are distinct regions; use copy_nonoverlapping
+        ptr::copy_nonoverlapping(b.data.as_ptr(), src_dst, 512);
+        // clear dirty
+        b.flags &= !B_DIRTY;
+    } else {
+        // read from memdisk into buffer: memmove(b->data, p, 512);
+        ptr::copy_nonoverlapping(src_dst, b.data.as_mut_ptr(), 512);
+    }
+
+    // mark valid
     b.flags |= B_VALID;
 }

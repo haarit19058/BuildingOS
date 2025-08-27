@@ -9,6 +9,7 @@ pub const B_BUSY: uint  = 0x1; // buffer is locked by some process
 pub const B_VALID: uint = 0x2; // buffer has been read from disk
 pub const B_DIRTY: uint = 0x4; // buffer needs to be written to disk
 
+#[derive(Clone, Copy)]
 pub struct buf {
     pub flags: uint,
     pub dev: uint,

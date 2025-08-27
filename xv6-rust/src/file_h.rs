@@ -54,7 +54,8 @@ pub const CONSOLE: uint = 1;
 
 // External declaration
 extern "C" {
-    pub static mut devsw: [devsw; /* fill with actual device count */];
+    // something is wrong here look at it thoroughly
+    pub static mut devsw: [devsw;10];
 }
 
 // Placeholder for pipe struct

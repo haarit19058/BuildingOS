@@ -1,3 +1,8 @@
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+#![allow(non_upper_case_globals)]
+// #![allow(dead_code)]
+
 pub const SYS_fork:    u32 = 1;
 pub const SYS_exit:    u32 = 2;
 pub const SYS_wait:    u32 = 3;

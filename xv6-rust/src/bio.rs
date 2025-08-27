@@ -1,121 +1,142 @@
-use crate::types_h::*;
-// use crate::defs::*;
-use crate::param_h::*;
-use crate::spinlock_h::*;
-use crate::buf_h::*;
+#![allow(non_camel_case_types)]
+#![allow(non_upper_case_globals)]
+#![allow(non_snake_case)]
 
-pub struct BCache {
-    lock: SpinLock,
-    buf: [Buf; NBUF],
-    head: Buf, // dummy head for circular doubly-linked list
+
+use crate::buf_h::*;
+use crate::spinlock_h::*;
+use crate::types_h::*;
+use crate::{panic, sleep, wakeup, iderw}; // assume these are defined elsewhere
+
+// Number of buffers
+const NBUF: usize = 30; // adjust this to match your param.h
+
+pub struct bcache {
+    pub lock: spinlock,
+    pub buf: [buf; NBUF],
+
+    // Head of doubly-linked list of buffers.
+    // head.next is most recently used.
+    pub head: buf,
 }
 
-pub static mut BCACHE: BCache = BCache {
-    lock: SpinLock::new(),
-    buf: [Buf::new(); NBUF],
-    head: Buf::new(),
-};
-
-impl Buf {
-    pub const fn new() -> Buf {
-        Buf {
-            flags: 0,
-            dev: 0,
-            sector: 0,
-            prev: core::ptr::null_mut(),
-            next: core::ptr::null_mut(),
-            qnext: core::ptr::null_mut(),
-            data: [0; 512],
+impl bcache {
+    pub const fn new() -> Self {
+        bcache {
+            lock: spinlock::new(),
+            buf: [buf::new(); NBUF],
+            head: buf::new(),
         }
     }
-}
 
-pub unsafe fn binit() {
-    initlock(&mut BCACHE.lock, b"bcache\0".as_ptr());
+    pub unsafe fn binit(&mut self) {
+        self.lock.init(b"bcache\0".as_ptr());
 
-    BCACHE.head.prev = &mut BCACHE.head;
-    BCACHE.head.next = &mut BCACHE.head;
+        // Initialize head as circular list
+        self.head.prev = Some(&mut self.head);
+        self.head.next = Some(&mut self.head);
 
-    for b in BCACHE.buf.iter_mut() {
-        b.next = BCACHE.head.next;
-        b.prev = &mut BCACHE.head;
-        b.dev = u32::MAX; // -1 in C
-
-        (*BCACHE.head.next).prev = b;
-        BCACHE.head.next = b;
+        // Create linked list of buffers
+        for b in self.buf.iter_mut() {
+            b.next = self.head.next;
+            b.prev = Some(&mut self.head);
+            b.dev = u32::MAX; // equivalent to -1 in C
+            if let Some(next) = self.head.next {
+                (*next).prev = Some(b as *mut buf);
+            }
+            self.head.next = Some(b as *mut buf);
+        }
     }
-}
 
-unsafe fn bget(dev: u32, sector: u32) -> *mut Buf {
-    loop {
-        acquire(&mut BCACHE.lock);
+    // Look through buffer cache for sector on device dev.
+    // If not found, allocate fresh block.
+    // In either case, return B_BUSY buffer.
+    unsafe fn bget(&mut self, dev: uint, sector: uint) -> *mut buf {
+        self.lock.acquire();
 
-        // search for cached buffer
-        let mut b = BCACHE.head.next;
-        while b != &mut BCACHE.head as *mut Buf {
-            if (*b).dev == dev && (*b).sector == sector {
-                if (*b).flags & B_BUSY == 0 {
-                    (*b).flags |= B_BUSY;
-                    release(&mut BCACHE.lock);
+        loop {
+            // Check if cached
+            let mut bptr = self.head.next;
+            while let Some(b) = bptr {
+                if (*b).dev == dev && (*b).sector == sector {
+                    if (*b).flags & B_BUSY == 0 {
+                        (*b).flags |= B_BUSY;
+                        self.lock.release();
+                        return b;
+                    }
+                    sleep(b as *mut _, &mut self.lock);
+                    // retry
+                    continue;
+                }
+                bptr = (*b).next;
+            }
+
+            // Not cached; recycle non-busy, clean buffer
+            let mut bptr = self.head.prev;
+            while let Some(b) = bptr {
+                if (*b).flags & B_BUSY == 0 && (*b).flags & B_DIRTY == 0 {
+                    (*b).dev = dev;
+                    (*b).sector = sector;
+                    (*b).flags = B_BUSY;
+                    self.lock.release();
                     return b;
                 }
-                sleep(b as *mut u8, &mut BCACHE.lock);
-                release(&mut BCACHE.lock);
-                continue; // retry
+                bptr = (*b).prev;
             }
-            b = (*b).next;
-        }
 
-        // not cached; recycle clean non-busy buffer from tail
-        let mut b = BCACHE.head.prev;
-        while b != &mut BCACHE.head as *mut Buf {
-            if (*b).flags & B_BUSY == 0 && (*b).flags & B_DIRTY == 0 {
-                (*b).dev = dev;
-                (*b).sector = sector;
-                (*b).flags = B_BUSY;
-                release(&mut BCACHE.lock);
-                return b;
-            }
-            b = (*b).prev;
+            panic("bget: no buffers\0".as_ptr());
         }
-
-        panic(b"bget: no buffers\0".as_ptr());
     }
-}
 
-pub unsafe fn bread(dev: u32, sector: u32) -> *mut Buf {
-    let b = bget(dev, sector);
-    if (*b).flags & B_VALID == 0 {
+    // Return a B_BUSY buf with contents of disk sector
+    pub unsafe fn bread(&mut self, dev: uint, sector: uint) -> *mut buf {
+        let b = self.bget(dev, sector);
+        if (*b).flags & B_VALID == 0 {
+            iderw(b);
+        }
+        b
+    }
+
+    // Write buffer to disk. Must be B_BUSY
+    pub unsafe fn bwrite(&mut self, b: *mut buf) {
+        if (*b).flags & B_BUSY == 0 {
+            panic("bwrite\0".as_ptr());
+        }
+        (*b).flags |= B_DIRTY;
         iderw(b);
     }
-    b
-}
 
-pub unsafe fn bwrite(b: *mut Buf) {
-    if (*b).flags & B_BUSY == 0 {
-        panic(b"bwrite\0".as_ptr());
+    // Release a B_BUSY buffer.
+    // Move to head of MRU list.
+    pub unsafe fn brelse(&mut self, b: *mut buf) {
+        if (*b).flags & B_BUSY == 0 {
+            panic("brelse\0".as_ptr());
+        }
+
+        self.lock.acquire();
+
+        // remove from list
+        if let Some(prev) = (*b).prev {
+            (*prev).next = (*b).next;
+        }
+        if let Some(next) = (*b).next {
+            (*next).prev = (*b).prev;
+        }
+
+        // insert at MRU head
+        (*b).next = self.head.next;
+        (*b).prev = Some(&mut self.head);
+        if let Some(next) = self.head.next {
+            (*next).prev = Some(b);
+        }
+        self.head.next = Some(b);
+
+        (*b).flags &= !B_BUSY;
+        wakeup(b as *mut _);
+
+        self.lock.release();
     }
-    (*b).flags |= B_DIRTY;
-    iderw(b);
 }
 
-pub unsafe fn brelse(b: *mut Buf) {
-    if (*b).flags & B_BUSY == 0 {
-        panic(b"brelse\0".as_ptr());
-    }
-
-    acquire(&mut BCACHE.lock);
-
-    (*(*b).next).prev = (*b).prev;
-    (*(*b).prev).next = (*b).next;
-
-    (*b).next = BCACHE.head.next;
-    (*b).prev = &mut BCACHE.head;
-    (*BCACHE.head.next).prev = b;
-    BCACHE.head.next = b;
-
-    (*b).flags &= !B_BUSY;
-    wakeup(b as *mut u8);
-
-    release(&mut BCACHE.lock);
-}
+// Global buffer cache
+pub static mut BCACHE: bcache = bcache::new();
