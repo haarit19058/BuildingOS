@@ -60,11 +60,10 @@ int sys_sleep(void)
 {
     int n;
     uint ticks0;
-
+    // get the argument value n (no. of ticks)
     if(argint(0, &n) < 0) {
         return -1;
     }
-
     acquire(&tickslock);
 
     ticks0 = ticks;

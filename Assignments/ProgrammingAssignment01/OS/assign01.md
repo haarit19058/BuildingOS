@@ -15,7 +15,7 @@ Implementing the uptime command to print how long the system has been running
 
 According to my understanding the user programs that runs in terminal are defined as .c file under /usr 
 
-During compile time first all those /usr/*.c files are compiled into executable and tehn linked by mkfs.c into / folder so that when we call the function from the terminal it will execute succesfully
+During compile time first all those /usr/*.c files are compiled into executable and then linked by mkfs.c into / folder so that when we call the function from the terminal it will execute succesfully
 
 so we make a file uptime.c in /usr that will print the uptime using the uptime() function.
 
@@ -29,6 +29,7 @@ Note:
 - already defined as uptime(void) in /usr/user.h
 
 therefore we can directly use the uptime call in the uptime.c file
+But uptime returns the number of ticks, so we need to convert it into seconds by dividing using frequency of ticks (HZ).
 The rest is abstraction that we need to study tomorrow
 
 That is all to understand how the user functions are defined

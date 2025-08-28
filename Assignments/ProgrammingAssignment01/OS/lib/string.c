@@ -54,6 +54,8 @@ int memcmp(const void *v1, const void *v2, uint n)
     return 0;
 }
 
+// Copy n bytes from src to dst.  The memory areas may overlap.
+// Returns dst.
 void* memmove(void *dst, const void *src, uint n)
 {
     const char *s;

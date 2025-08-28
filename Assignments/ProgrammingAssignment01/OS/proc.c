@@ -634,7 +634,7 @@ ps(void)
 
     acquire(&ptable.lock);
 
-    cprintf("PID\tPARENT PID\tSTATE\t\tNAME\tSYSCALLS\n");
+    cprintf("PID\tPPID\tSTATE\t\tNAME\tSYSCALLS\n");
 
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
         if(p->state == UNUSED)

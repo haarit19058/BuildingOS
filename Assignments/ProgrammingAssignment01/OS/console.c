@@ -226,7 +226,7 @@ void consoleintr (int (*getc) (void))
             while(start > input.w && input.buf[(start - 1) % INPUT_BUF] != ' ')
                 start--;
 
-            // find teh length of the usre input and write it in to temp buffer
+            // find the length of the user input and write it in to temp buffer
             int prefix_length = input.e - start;
             for(int i = 0; i < prefix_length; i++)
                 tmp[i] = input.buf[(start + i) % INPUT_BUF];
