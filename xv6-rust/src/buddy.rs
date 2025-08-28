@@ -70,7 +70,7 @@ unsafe fn blkid2mem(order_: types_h::uint, blkid: types_h::uint) -> *mut c_void 
 
 #[inline(always)]
 unsafe fn mem2blkid(order_: types_h::uint, mem: *mut c_void) -> types_h::uint {
-    ((((mem as types_h::uint) - kmem.start_heap) >> order_) as types_h::uint)
+    (((mem as types_h::uint) - kmem.start_heap) >> order_) as types_h::uint
 }
 
 #[inline(always)]
@@ -92,7 +92,7 @@ pub unsafe fn kmem_init2(vstart: *mut c_void, vend: *mut c_void) {
     let mut j: types_h::uint;
     let mut total: types_h::uint32 = 0;
     let mut n: types_h::uint32;
-    let mut len: types_h::uint;
+    let  len: types_h::uint;
     let mut ord_ptr: *mut order;
     let mut mk: *mut mark;
 
@@ -135,8 +135,8 @@ pub unsafe fn kmem_init2(vstart: *mut c_void, vend: *mut c_void) {
 unsafe fn unmark_blk(order_: types_h::uint, blk_id: types_h::uint) {
     let ord = &mut kmem.orders[(order_ - MIN_ORD) as usize] as *mut order;
     let mk = get_mark(order_, blk_id >> 5);
-    let mut prev: types_h::uint;
-    let mut next: types_h::uint;
+    let  prev: types_h::uint;
+    let  next: types_h::uint;
     let mut p: *mut mark;
 
     if !available((*mk).bitmap as types_h::uint, blk_id) {
@@ -146,7 +146,7 @@ unsafe fn unmark_blk(order_: types_h::uint, blk_id: types_h::uint) {
     (*mk).bitmap &= !(1 << (blk_id & 0x1F));
 
     if (*mk).bitmap == 0 {
-        let mut blk = blk_id >> 5;
+        let  blk = blk_id >> 5;
         prev = PRE_LNK((*mk).lnks) as types_h::uint;
         next = NEXT_LNK((*mk).lnks) as types_h::uint;
 
@@ -171,7 +171,7 @@ unsafe fn mark_blk(order_: types_h::uint, blk_id: types_h::uint) {
     let mk = get_mark(order_, blk_id >> 5);
     let  p: *mut mark;
 
-    let insert = (( (*mk).bitmap == 0) as types_h::uint) ;
+    let insert = ( (*mk).bitmap == 0) as types_h::uint ;
 
     if available((*mk).bitmap as types_h::uint, blk_id) {
         // panic(b"double free\n\0".as_ptr() as *const i8);
@@ -180,7 +180,7 @@ unsafe fn mark_blk(order_: types_h::uint, blk_id: types_h::uint) {
     (*mk).bitmap |= 1 << (blk_id & 0x1F);
 
     if insert != 0 {
-        let mut idx = blk_id >> 5;
+        let  idx = blk_id >> 5;
         (*mk).lnks = LNKS(NIL as types_h::uint32, (*ord).head);
         if (*ord).head != NIL as types_h::uint32 {
             p = get_mark(order_, (*ord).head as types_h::uint);
