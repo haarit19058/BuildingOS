@@ -1,6 +1,9 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 #![allow(dead_code)]
+#![allow(non_upper_case_globals)]
+#![allow(unused_mut)]
+
 
 use core::ptr;
 use core::arch::asm;
@@ -125,7 +128,7 @@ pub unsafe fn walkpgdir(pgdir: *mut types_h::pde_t, va: uint, alloc: i32) -> *mu
         // make sure zeros (kpt_alloc already zeroed)
 
         // store PDE: physical address of pgtab | UPDE_TYPE
-        *pde = (memlayout_h::V2P(pgtab as *mut c_void) as types_h::pde_t) | (UPDE_TYPE as types_h::pde_t);
+        *pde = (memlayout_h::V2P(pgtab ) as types_h::pde_t) | (UPDE_TYPE as types_h::pde_t);
 
         return pgtab.add(PTE_IDX(va) as usize);
     }
@@ -182,7 +185,7 @@ pub unsafe fn switchuvm(p: *mut crate::proc_h::proc) {
         panic(b"switchuvm: no pgdir\0".as_ptr() as *const i8);
     }
 
-    let val = (V2P((*p).pgdir as *mut c_void) as u32) | 0x00u32;
+    let val = (V2P((*p).pgdir) as u32) | 0x00u32;
     asm!("MCR p15, 0, {0}, c2, c0, 0", in(reg) val, options(nostack));
     flush_tlb();
 
@@ -194,12 +197,12 @@ pub unsafe fn inituvm(pgdir: *mut types_h::pde_t, init: *const u8, sz: types_h::
         panic(b"inituvm: more than a page\0".as_ptr() as *const i8);
     }
 
-    let mem = buddy::alloc_page();
+    let mem: *mut c_void = buddy::alloc_page();
     if mem.is_null() {
         panic(b"inituvm: alloc_page failed\0".as_ptr() as *const i8);
     }
     ptr::write_bytes(mem as *mut u8, 0, mmu_h::PTE_SZ as usize);
-    mappages(pgdir, 0 as *mut c_void, mmu_h::PTE_SZ as types_h::uint, mmu_h::v2p(mem as *mut c_void), mmu_h::AP_KU as i32);
+    mappages(pgdir, 0 as *mut c_void, mmu_h::PTE_SZ as types_h::uint, memlayout_h::v2p(mem as *mut u32), mmu_h::AP_KU as i32);
     // copy init data
     core::ptr::copy_nonoverlapping(init, mem as *mut u8, sz as usize);
 }
@@ -245,7 +248,7 @@ pub unsafe fn allocuvm(pgdir: *mut types_h::pde_t, oldsz: types_h::uint, newsz: 
             return 0;
         }
         ptr::write_bytes(mem as *mut u8, 0, mmu_h::PTE_SZ as usize);
-        if mappages(pgdir, a as *mut c_void, mmu_h::PTE_SZ as types_h::uint, memlayout_h::V2P(mem as *mut c_void), mmu_h::AP_KU as i32) != 0 {
+        if mappages(pgdir, a as *mut c_void, mmu_h::PTE_SZ as types_h::uint, memlayout_h::V2P(mem as *mut u32), mmu_h::AP_KU as i32) != 0 {
             deallocuvm(pgdir, newsz, oldsz);
             return 0;
         }
@@ -336,7 +339,7 @@ pub unsafe fn copyuvm(pgdir: *mut types_h::pde_t, sz: types_h::uint) -> *mut typ
 
         core::ptr::copy_nonoverlapping(memlayout_h::p2v(pa) as *const u8, mem as *mut u8, mmu_h::PTE_SZ as usize);
 
-        if mappages(d, i as *mut c_void, mmu_h::PTE_SZ as types_h::uint, memlayout_h::V2P(mem as *mut c_void), ap as i32) < 0 {
+        if mappages(d, i as *mut c_void, mmu_h::PTE_SZ as types_h::uint, memlayout_h::V2P(mem as *mut u32), ap as i32) < 0 {
             freevm(d);
             return ptr::null_mut();
         }
@@ -358,45 +361,45 @@ pub unsafe fn uva2ka(pgdir: *mut types_h::pde_t, uva: *mut u8) -> *mut u8 {
     memlayout_h::P2V(mmu_h::PTE_ADDR(*pte) as types_h::uint) as *mut u8
 }
 
-pub unsafe fn copyout(pgdir: *mut types_h::pde_t, va: types_h::uint, p: *const c_void, mut len: types_h::uint) -> i32 {
+pub unsafe fn copyout(
+    pgdir: *mut types_h::pde_t,
+    mut va: types_h::uint,
+    p: *const core::ffi::c_void,
+    mut len: types_h::uint,
+) -> i32 {
     let mut buf = p as *const u8;
+
     while len > 0 {
+        // page-align the virtual address
         let va0 = mmu_h::align_dn(va, mmu_h::PTE_SZ as types_h::uint);
         let pa0 = uva2ka(pgdir, va0 as *mut u8);
+
         if pa0.is_null() {
             return -1;
         }
+
+        // number of bytes left in this page
         let mut n = mmu_h::PTE_SZ as types_h::uint - (va - va0);
-        if n > len { n = len; }
-        core::ptr::copy_nonoverlapping(buf, unsafe { pa0.add((va - va0) as usize) }, n as usize);
-        len = len.wrapping_sub(n);
+        if n > len {
+            n = len;
+        }
+
+        // copy bytes into kernel space
+        core::ptr::copy_nonoverlapping(
+            buf,
+            pa0.add((va - va0) as usize),
+            n as usize,
+        );
+
+        // advance pointers
+        len -= n;
         buf = buf.add(n as usize);
-        // va = va0 + PTE_SZ
-        // compute new va as integer
-        let new_va = va0.wrapping_add(mmu_h::PTE_SZ as types_h::uint);
-        // update va for next iteration
-        // Note: because va is passed by value, we shadow it here
-        // but keep loop correct by reassigning
-        // However in Rust we need mutable va; we'll just use new_va
-        // Update outer `va` variable for next loop - workaround below
-        // (We opted to compute next iteration index differently.)
-        // For simplicity, break this loop to avoid complex mutation; but keep correctness by using new_va.
-        // Reassign and continue.
-        // TBD: simpler approach: maintain a mutable local `cur_va`.
-        
-        // To keep things simple, recompute va and continue normally by re-binding.
-        // This code will not compile as-is since va is not mutable; but to conform to translation, assume mutable.
-        
-        // (Implementation note: in the real kernel code va is updated. In Rust translation one would make va mutable.)
-        
-        // Here we simulate update
-        // va = new_va; // <-- conceptual
-        
-        // To keep loop correct, break (we cannot continue without mutation). This is a placeholder.
-        return 0; // placeholder - full loop logic should update va and continue
+        va = va0 + mmu_h::PTE_SZ as types_h::uint;
     }
+
     0
 }
+
 
 pub unsafe fn paging_init(phy_low: types_h::uint, phy_hi: types_h::uint) {
     // Map the kernel initial page table one-to-one for [phy_low, phy_hi)

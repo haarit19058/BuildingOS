@@ -1,9 +1,13 @@
 #![allow(non_camel_case_types)]
 #![allow(dead_code)]
 
+use crate::arm_h::trapframe;
+use crate::file_h::file;
+use crate::file_h::inode;
 use crate::memlayout_h::uint;
 use crate::types_h; // for types_h::uint, types_h::uchar, etc.
-use crate::params_h; // for NCPU, NOFILE, etc.
+use crate::params_h;
+use crate::types_h::pde_t; // for NCPU, NOFILE, etc.
 use core::ffi::c_void;
 
 /// Per-CPU state
@@ -51,17 +55,17 @@ pub enum procstate {
 pub struct proc {
     pub syscount:  types_h::uint,
     pub sz:        types_h::uint,           // Size of process memory (bytes)
-    pub pgdir:     *mut c_void,    // Page table (pde_t*)
+    pub pgdir:     *mut pde_t,    // Page table (pde_t*)
     pub kstack:    *mut u8,        // Bottom of kernel stack for this process
     pub state:     procstate,      // Process state
     pub pid:       uint,            // Process ID
     pub parent:    *mut proc,      // Parent process
-    pub tf:        *mut c_void,    // Trap frame for current syscall
+    pub tf:        *mut trapframe,    // Trap frame for current syscall
     pub context:   *mut context,   // swtch() here to run process
     pub chan:      *mut c_void,    // If non-zero, sleeping on chan
-    pub killed:    uint,            // If non-zero, have been killed
-    pub ofile:     [*mut c_void; params_h::NOFILE as usize], // Open files
-    pub cwd:       *mut c_void,    // Current directory (inode)
+    pub killed:    i32,            // If non-zero, have been killed
+    pub ofile:     [*mut file; params_h::NOFILE as usize], // Open files
+    pub cwd:       *mut inode,    // Current directory (inode)
     pub name:      [u8; 16],       // Process name (debugging)
 }
 

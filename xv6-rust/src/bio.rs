@@ -6,7 +6,11 @@
 use crate::buf_h::*;
 use crate::spinlock_h::*;
 use crate::types_h::*;
-use crate::{panic, sleep, wakeup, iderw}; // assume these are defined elsewhere
+use crate::memide::*;
+use crate::syscall::*;
+use crate:: proc::*;
+use crate::syscall_h::*;    
+// use crate::{panic, sleep, wakeup, iderw}; // assume these are defined elsewhere
 
 // Number of buffers
 const NBUF: usize = 30; // adjust this to match your param.h
@@ -84,7 +88,7 @@ impl bcache {
                 bptr = (*b).prev;
             }
 
-            panic("bget: no buffers\0".as_ptr());
+            // panic("bget: no buffers\0".as_ptr());
         }
     }
 
@@ -100,7 +104,7 @@ impl bcache {
     // Write buffer to disk. Must be B_BUSY
     pub unsafe fn bwrite(&mut self, b: *mut buf) {
         if (*b).flags & B_BUSY == 0 {
-            panic("bwrite\0".as_ptr());
+            // panic("bwrite\0".as_ptr());
         }
         (*b).flags |= B_DIRTY;
         iderw(b);
@@ -110,7 +114,7 @@ impl bcache {
     // Move to head of MRU list.
     pub unsafe fn brelse(&mut self, b: *mut buf) {
         if (*b).flags & B_BUSY == 0 {
-            panic("brelse\0".as_ptr());
+            // panic("brelse\0".as_ptr());
         }
 
         self.lock.acquire();

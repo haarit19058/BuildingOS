@@ -53,63 +53,61 @@ pub fn filealloc() -> Option<&'static mut file> {
 }
 
 /// Increment ref count for a file and return the same file reference.
-pub fn filedup(f: &mut file) -> &mut file {
-    unsafe {
-        FTABLE.lock.acquire();
+pub unsafe fn filedup(f: *mut file) -> *mut file {
+    // Acquire lock
+    FTABLE.lock.acquire();
 
-        if f.ref_count < 1 {
-            panic!("filedup: ref_count < 1");
-        }
-
-        f.ref_count += 1;
-        FTABLE.lock.release();
-        f
+    if (*f).ref_count < 1 {
+        // panic!("filedup: ref_count < 1\0".as_ptr());
     }
+
+    (*f).ref_count += 1;
+
+    // Release lock
+    FTABLE.lock.release();
+
+    f
 }
 
-/// Close file `f`. Decrease refcount; on final close, perform cleanup depending on file type.
-pub fn fileclose(f: &mut file) {
-    // make a local copy of the file (shallow) to operate on after unlocking
-    let ff: file;
+// Close file `f`. Decrease refcount; on final close, perform cleanup depending on file type.
+pub unsafe fn fileclose(f: *mut file) {
+    // local shallow copy to operate on after unlocking
+    let mut ff: file;
 
-    unsafe {
-        FTABLE.lock.acquire();
+    FTABLE.lock.acquire();
 
-        if f.ref_count < 1 {
-            panic!("fileclose: ref_count < 1");
-        }
-
-        if f.ref_count > 1 {
-            f.ref_count -= 1;
-            FTABLE.lock.release();
-            return;
-        }
-
-        // Last reference: take a copy of f (so we can operate after unlocking)
-        ff = core::ptr::read(f as *const file);
-        // Mark slot free
-        f.ref_count = 0;
-        f.type_ = fdtype::FD_NONE;
-        FTABLE.lock.release();
+    if (*f).ref_count < 1 {
+        // panic!("fileclose: ref_count < 1\0".as_ptr());
     }
 
+    if (*f).ref_count > 1 {
+        (*f).ref_count -= 1;
+        FTABLE.lock.release();
+        return;
+    }
+
+    // Last reference: take a shallow copy (safe after unlock)
+    ff = core::ptr::read(f as *const file);
+
+    // Mark slot as free
+    (*f).ref_count = 0;
+    (*f).type_ = fdtype::FD_NONE;
+
+    FTABLE.lock.release();
+
+    // Now release resources depending on type
     match ff.type_ {
         fdtype::FD_PIPE => {
-            // ff.pipe is Option<*mut pipe>
             if let Some(p) = ff.pipe {
-                // assumes pipeclose exists and matches signature
                 crate::pipe::pipeclose(p, ff.writable);
             }
         }
         fdtype::FD_INODE => {
-            // Inode-backed file: release inode inside a transaction
-            unsafe {
-                log::begin_trans();
-                if let Some(ip) = ff.ip {
-                    crate::fs::iput(ip);
-                }
-                log::commit_trans();
+            log::begin_trans();
+            if let Some(ip) = ff.ip {
+                crate::fs::iput(ip);
             }
+            log::commit_trans();
         }
         _ => {}
     }
@@ -153,7 +151,7 @@ pub fn fileread(f: &mut file, addr: *mut u8, n: i32) -> i32 {
             unsafe {
                 if let Some(ip) = f.ip {
                     crate::fs::ilock(ip);
-                    let r = crate::file::readi(ip, addr, f.off as i32, n);
+                    let r = crate::fs::readi(ip, addr, f.off as i32, n);
                     if r > 0 {
                         f.off = f.off.wrapping_add(r as u32);
                     }
@@ -198,7 +196,7 @@ pub fn filewrite(f: &mut file, addr: *const u8, n: i32) -> i32 {
                     log::begin_trans();
                     if let Some(ip) = f.ip {
                         crate::fs::ilock(ip);
-                        let r = crate::file::writei(ip, addr.add(i as usize), f.off as i32, n1);
+                        let r = crate::fs::writei(ip, addr.add(i as usize), f.off as i32, n1);
                         if r > 0 {
                             f.off = f.off.wrapping_add(r as u32);
                         }

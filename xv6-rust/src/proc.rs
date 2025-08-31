@@ -1,159 +1,156 @@
-#![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
-#![allow(dead_code)]
+#![allow(non_snake_case)]
+#![allow(non_upper_case_globals)]
 
+// use crate::types_h::*;
+use crate::params_h::*;       // NPROC, KSTACKSIZE, NOFILE, PTE_SZ, etc.
+// use crate::memlayout_h::*;
+use crate::string_h::*;
+use crate::mmu_h::*;
+use crate::arm_h::*;
+use crate::arm::*;
+use crate::spinlock_h::*;
+use crate::proc_h::{proc as Proc,procstate,context,cpu as CPU};
+// use crate::proc::*;          // struct proc, trapframe, context, etc.
+use crate::fs::*;
+use crate::file::*;
+use crate::buddy::*;       // alloc_page, free_page (assumed)
+use crate::vm::*;           // kpt_alloc, inituvm, copyuvm, freevm
+use crate::log::*;          use core::ffi::c_void;
+// initlog
 use core::ptr;
-use core::mem;
 
-use crate::proc_h::{proc, procstate, context, cpu};
-use crate::spinlock_h;
-use crate::arm;
-use crate::types_h::uint;
-use crate::params_h::{NPROC, NOFILE,KSTACKSIZE};
-use crate::mmu_h::{PTE_SZ};
-// use crate::memlayout_h;
-// use crate::mmu_h; // for page / kpt helpers - assumed present
+/// Process table
+// use core::ptr;
 
-// External helpers / functions assumed to be defined elsewhere:
-// extern "C" {
-//     fn forkret();
-//     fn trapret();
-//     fn initlog();
-//     fn cprintf(fmt: &str, ...);
-//     fn panic(msg: &str) -> !;
-// }
-
-// // Helper kernel functions assumed present elsewhere (signatures approximated)
-// extern "Rust" {
-//     // memory / page allocators
-//     fn alloc_page() -> *mut u8;
-//     fn free_page(p: *mut u8);
-
-//     // page table helpers
-//     fn kpt_alloc() -> *mut core::ffi::c_void;
-//     fn inituvm(pgdir: *mut core::ffi::c_void, init: *const u8, sz: i32);
-//     fn copyuvm(pgdir: *mut core::ffi::c_void, sz: uint) -> *mut core::ffi::c_void;
-//     fn allocuvm(pgdir: *mut core::ffi::c_void, oldsz: uint, newsz: uint) -> uint;
-//     fn deallocuvm(pgdir: *mut core::ffi::c_void, oldsz: uint, newsz: uint) -> uint;
-//     fn freevm(pgdir: *mut core::ffi::c_void);
-//     fn switchuvm(p: *mut );
-//     fn safestrcpy(dst: *mut u8, src: *const u8, n: usize);
-//     fn namei(path: *const u8) -> *mut core::ffi::c_void;
-
-//     // file and inode helpers
-//     fn fileclose(f: *mut crate::file_h::file);
-//     fn idup(cwd: *mut core::ffi::c_void) -> *mut core::ffi::c_void;
-//     fn iput(ip: *mut core::ffi::c_void);
-
-//     // scheduling primitives
-//     fn swtch(old_ctx: *mut *mut , new_ctx: *mut );
-//     fn sleep(chan: *mut core::ffi::c_void, lk: *mut spinlock_h::spinlock);
-//     fn wakeup1(chan: *mut core::ffi::c_void);
-//     fn wakeup(chan: *mut core::ffi::c_void);
-//     fn sched();
-//     fn show_callstk(s: &str);
-
-//     // syscount reporting (if any)
-// }
-
-// Process table
-pub struct ptable {
-    pub lock: spinlock_h::spinlock,
-    pub proc: [proc; NPROC as usize],
+pub struct PTable {
+    pub lock: spinlock,
+    pub proc: [*mut Proc; NPROC as usize],  // array of raw pointers
 }
 
-impl ptable {
+impl PTable {
     pub const fn new() -> Self {
-        // Assumes ::new() exists as a const fn to create zeroed/initial state.
-        // If not const, consider runtime initialization in pinit().
-        ptable {
-            lock: spinlock_h::spinlock::new(),
-            proc: crate::util::array_from_fn(|_| ::new()),
+        PTable {
+            lock: spinlock::new(),
+            proc: [ptr::null_mut(); NPROC as usize], // initialize all to null
         }
     }
 }
 
-// Global process table, initproc and current proc pointer
-static mut PTABLE: ptable = ptable::new();
 
-static mut initproc: *mut  proc= ptr::null_mut();
-pub static mut proc: *mut  proc= ptr::null_mut();
+/// Global process table and globals
+pub static mut PTABLE: PTable = PTable::new();
+pub static mut initproc: *mut Proc = ptr::null_mut();
+pub static mut proc: *mut Proc = ptr::null_mut(); // current running process (on this CPU)
+pub static mut nextpid: i32 = 1;
 
-// next pid
-static mut nextpid: int = 1isize; // we'll cast when needed
-
-// Initialize process table lock
-pub unsafe fn pinit() {
-    PTABLE.lock.init(b"ptable\0".as_ptr());
+extern "C" {
+//     fn forkret();
+    fn trapret();
 }
 
-// Allocate a process. Returns a pointer to proc or null on failure.
-unsafe fn allocproc() -> *mut  proc{
+pub unsafe fn cpu() -> &'static mut CPU {
+    if cpu.is_null() {
+        panic!("cpu: cpu is null");
+    }
+    &mut *cpu
+}
+
+pub unsafe fn current_proc() -> *mut Proc {
+    proc
+}
+
+
+/// Helper to wake up processes sleeping on `chan`. `ptable.lock` must be held.
+unsafe fn wakeup1(chan: *const u8) {
+    for i in 0..(NPROC as usize) {
+        let p = PTABLE.proc[i];
+        if (*p).state == procstate::SLEEPING  && (*p).chan == chan as *mut _ {
+            (*p).state = procstate::RUNNABLE;
+        }
+    }
+}
+
+/// Initialize process table lock.
+pub unsafe fn pinit() {
+    PTABLE.lock.init("ptable\0".as_ptr());
+}
+
+/// Allocate a new process slot and set up kernel stack/context.
+/// Returns null on failure.
+pub unsafe fn allocproc() -> *mut Proc {
     PTABLE.lock.acquire();
 
-    // find UNUSED proc
+    // find UNUSED slot
+    let mut found: Option<usize> = None;
     for i in 0..(NPROC as usize) {
-        let pptr: *mut  proc= &mut PTABLE.proc[i];
-        if (*pptr).state == procstate::UNUSED {
-            // found
-            (*pptr).syscount = 0;
-            (*pptr).state = procstate::EMBRYO;
-            (*pptr).pid = nextpid as uint;
-            nextpid += 1;
-            PTABLE.lock.release();
-
-            // allocate kernel stack
-            let kstack = alloc_page();
-            if kstack.is_null() {
-                (*pptr).state = procstate::UNUSED;
-                return ptr::null_mut();
-            }
-            (*pptr).kstack = kstack;
-
-            // set up initial stack pointer
-            let mut sp = kstack.add(KSTACKSIZE as usize);
-
-            // leave room for trapframe
-            sp = sp.offset(-(mem::size_of::<crate::arm_h::trapframe>() as isize) as usize);
-            (*pptr).tf = sp as *mut crate::arm_h::trapframe;
-
-            // set up context so that swtch will start at forkret -> trapret
-            sp = sp.offset(-(4)); // for lr (trapret)
-            // write trapret address
-            let trapret_ptr = sp as *mut uint;
-            *trapret_ptr = trapret as uint;
-
-            sp = sp.offset(-(4));
-            let kstack_top_ptr = sp as *mut uint;
-            *kstack_top_ptr = (kstack as usize + KSTACKSIZE as usize) as uint;
-
-            sp = sp.offset(-(mem::size_of::<>()));
-            (*pptr).context = sp as *mut proc;
-
-            // zero context
-            ptr::write_bytes((*pptr).context as *mut u8, 0, mem::size_of::<>());
-
-            // skip push {fp, lr} in forkret; set lr to forkret + 4
-            (*(*pptr).context).lr = (forkret as usize + 4) as uint;
-
-            return pptr;
+        if (*PTABLE.proc[i]).state == procstate::UNUSED  {
+            found = Some(i);
+            break;
         }
     }
 
+    if found.is_none() {
+        PTABLE.lock.release();
+        return ptr::null_mut();
+    }
+
+    let idx = found.unwrap();
+    let p: *mut Proc = PTABLE.proc[idx] as *mut Proc;
+
+    // initialize proc fields
+    (*p).syscount = 0;
+    (*p).state = procstate::EMBRYO ;
+    (*p).pid = nextpid as u32;
+    nextpid += 1;
+
     PTABLE.lock.release();
-    ptr::null_mut()
+
+    // allocate kernel stack
+    let ks = alloc_page();
+    if ks.is_null() {
+        (*p).state = procstate::UNUSED ;
+        return ptr::null_mut();
+    }
+    (*p).kstack = ks as *mut u8;
+
+    // set up kernel stack layout: trapframe, return lr/context
+    let mut sp = (ks as usize) + KSTACKSIZE as usize;
+
+    // leave room for trapframe
+    sp -= core::mem::size_of::<trapframe>();
+    (*p).tf = sp as *mut trapframe;
+
+    // push trapret as return address
+    sp -= 4;
+    *(sp as *mut u32) = trapret as u32 ;
+
+    // push top of kernel stack as dummy frame pointer (platform-specific)
+    sp -= 4;
+    *(sp as *mut u32) = ((ks as usize) + KSTACKSIZE as usize) as u32;
+
+    // allocate context
+    sp -= core::mem::size_of::<context>();
+    (*p).context = sp as *mut context;
+    ptr::write_bytes((*p).context as *mut u8, 0, core::mem::size_of::<context>());
+
+    // set link register to forkret + 4 to skip prologue push in forkret (ARM)
+    (*p).context.as_mut().unwrap().lr = (forkret as usize + 4) as u32;
+
+    p
 }
 
-// Panic helper for first process error
-unsafe fn error_init() -> ! {
-    panic("failed to craft first process\n");
+/// Called if user process creation failed in a way we couldn't recover from.
+pub unsafe fn error_init() -> ! {
+    panic!("failed to craft first process");
 }
 
-// Create the first user process and set it runnable.
+/// Create the first user process, loading initcode.
 pub unsafe fn userinit() {
+    // linker-provided binary for initcode
     extern "C" {
-        static _binary_initcode_start: u8;
-        static _binary_initcode_size: u8;
+        static __binary_initcode_start: u8;
+        static __binary_initcode_size: u32;
     }
 
     let p = allocproc();
@@ -163,109 +160,97 @@ pub unsafe fn userinit() {
     initproc = p;
     (*p).parent = ptr::null_mut();
 
-    // allocate page table and load initcode
+    // allocate page table
     (*p).pgdir = kpt_alloc();
     if (*p).pgdir.is_null() {
-        panic("userinit: out of memory?");
+        panic!("userinit: out of memory?");
     }
 
-    inituvm((*p).pgdir, &_binary_initcode_start as *const u8, (&_binary_initcode_size as *const u8 as isize) as i32);
+    // initialize user memory with initcode
+    inituvm((*p).pgdir, &__binary_initcode_start as *const u8, __binary_initcode_size as u32);
 
-    (*p).sz = PTE_SZ;
+    (*p).sz = PTE_SZ as u32;
 
-    // craft trapframe as if interrupted
-    ptr::write_bytes((*p).tf as *mut u8, 0, mem::size_of::<crate::arm_h::trapframe>());
+    // craft trapframe for user mode
+    ptr::write_bytes((*p).tf as *mut u8, 0, core::mem::size_of::<trapframe>());
 
-    (*p).tf.as_mut().unwrap().r14_svc = error_init as uint;
-    (*p).tf.as_mut().unwrap().spsr = arm::spsr_usr();
-    (*p).tf.as_mut().unwrap().sp_usr = PTE_SZ;
+    (*p).tf.as_mut().unwrap().r14_svc = error_init as u32; // r14_svc
+    (*p).tf.as_mut().unwrap().spsr = spsr_usr();
+    (*p).tf.as_mut().unwrap().sp_usr = PTE_SZ as u32;
     (*p).tf.as_mut().unwrap().lr_usr = 0;
     (*p).tf.as_mut().unwrap().pc = 0;
 
-    // name and cwd
-    safestrcpy((*p).name.as_mut_ptr(), b"initcode\0".as_ptr(), (*p).name.len());
-    (*p).cwd = namei(b"/\0".as_ptr());
+    safestrcpy((*p).name.as_mut_ptr(), "initcode\0".as_ptr(), core::mem::size_of_val(&(*p).name));
+    (*p).cwd = namei("/\0".as_ptr());
 
     (*p).state = procstate::RUNNABLE;
 }
 
-// Grow current process's memory by n bytes.
-pub unsafe fn growproc(n: i32) -> i32 {
-    if proc.is_null() {
-        return -1;
-    }
+/// Grow or shrink current process memory by n bytes.
+/// Returns 0 on success, -1 on failure.
+pub unsafe fn growproc(n: isize) -> i32 {
     let mut sz = (*proc).sz;
-
     if n > 0 {
-        let newsz = allocuvm((*proc).pgdir, sz, sz.wrapping_add(n as uint));
+        let newsz = allocuvm((*proc).pgdir, sz, (sz as isize + n) as u32);
         if newsz == 0 {
             return -1;
         }
         sz = newsz;
     } else if n < 0 {
-        let newsz = deallocuvm((*proc).pgdir, sz, sz.wrapping_add(n as uint));
+        let newsz = deallocuvm((*proc).pgdir, sz, (sz as isize + n) as u32);
         if newsz == 0 {
             return -1;
         }
         sz = newsz;
     }
-
     (*proc).sz = sz;
     switchuvm(proc);
-
     0
 }
 
-// Fork current process. Returns child's pid in parent, 0 in child, -1 on error.
+/// Fork the current process. Returns child pid in parent, 0 in child, or -1 on error.
 pub unsafe fn fork() -> i32 {
-    if proc.is_null() {
-        return -1;
-    }
-
+    // allocate new proc
     let np = allocproc();
     if np.is_null() {
         return -1;
     }
 
     // copy user memory
-    let new_pgdir = copyuvm((*proc).pgdir, (*proc).sz);
-    if new_pgdir.is_null() {
-        free_page((*np).kstack);
+    let newpgdir = copyuvm((*proc).pgdir, (*proc).sz);
+    if newpgdir.is_null() {
+        free_page((*np).kstack as *mut c_void);
         (*np).kstack = ptr::null_mut();
         (*np).state = procstate::UNUSED;
         return -1;
     }
-
-    (*np).pgdir = new_pgdir;
+    (*np).pgdir = newpgdir;
     (*np).sz = (*proc).sz;
     (*np).parent = proc;
-
-    // copy trapframe
-    ptr::copy_nonoverlapping((*proc).tf, (*np).tf, 1);
+    *(*np).tf = *(*proc).tf;
 
     // child returns 0
     (*np).tf.as_mut().unwrap().r0 = 0;
 
-    // duplicate open files
-    for fd in 0..(NOFILE as usize) {
-        if !(*proc).ofile[fd].is_null() {
-            (*np).ofile[fd] = crate::file::filedup((*proc).ofile[fd]);
+    // copy file descriptors
+    for i in 0..NOFILE as usize {
+        if !(*proc).ofile[i].is_null() {
+            (*np).ofile[i] = filedup((*proc).ofile[i]);
         }
     }
 
     (*np).cwd = idup((*proc).cwd);
 
-    let pid = (*np).pid as i32;
+    let pid = (*np).pid;
     (*np).state = procstate::RUNNABLE;
-    safestrcpy((*np).name.as_mut_ptr(), (*proc).name.as_ptr(), (*proc).name.len());
-
-    pid
+    safestrcpy((*np).name.as_mut_ptr(), (*proc).name.as_ptr() , core::mem::size_of_val(&(*proc).name));
+    pid as i32
 }
 
-// Exit the current process. Does not return.
-pub unsafe fn exit() -> !{
+/// Exit current process. Does not return.
+pub unsafe fn exit() -> ! {
     if proc == initproc {
-        panic("init exiting");
+        panic!("init exiting");
     }
 
     // close files
@@ -281,52 +266,52 @@ pub unsafe fn exit() -> !{
 
     PTABLE.lock.acquire();
 
-    // wake parent (could be sleeping in wait)
-    wakeup1((*proc).parent as *mut core::ffi::c_void);
+    // wake parent
+    wakeup1((*proc).parent as *const u8);
 
-    // reparent children to initproc
+    // pass abandoned children to init
     for i in 0..(NPROC as usize) {
-        let pptr: *mut  proc = &mut PTABLE.proc[i];
-        if (*pptr).parent == proc {
-            (*pptr).parent = initproc;
-            if (*pptr).state == procstate::ZOMBIE {
-                wakeup1(initproc as *mut core::ffi::c_void);
+        let p = PTABLE.proc[i] as *mut Proc;
+        if (*p).parent == proc {
+            (*p).parent = initproc;
+            if (*p).state == procstate::ZOMBIE {
+                wakeup1(initproc as *const u8);
             }
         }
     }
 
-    (*proc).state = procstate::ZOMBIE;
-    // switch to scheduler never returns
+    // become zombie and schedule away
+    (*proc).state = procstate::ZOMBIE ;
     sched();
 
-    // panic("zombie exit");
+    panic!("zombie exit");
 }
 
-// Wait for a child process to exit and return its pid.
+/// Wait for a child to exit; return its pid or -1.
 pub unsafe fn wait() -> i32 {
     PTABLE.lock.acquire();
 
     loop {
         let mut havekids = false;
         for i in 0..(NPROC as usize) {
-            let pptr: *mut  proc = &mut PTABLE.proc[i];
-            if (*pptr).parent != proc {
+            let p = PTABLE.proc[i] as *mut Proc;
+            if (*p).parent != proc {
                 continue;
             }
             havekids = true;
-            if (*pptr).state == procstate::ZOMBIE {
+            if (*p).state == procstate::ZOMBIE{
                 // found one
-                let pid = (*pptr).pid as i32;
-                free_page((*pptr).kstack);
-                (*pptr).kstack = ptr::null_mut();
-                freevm((*pptr).pgdir);
-                (*pptr).state = procstate::UNUSED;
-                (*pptr).pid = 0;
-                (*pptr).parent = ptr::null_mut();
-                (*pptr).name[0] = 0;
-                (*pptr).killed = 0;
+                let pid = (*p).pid;
+                free_page((*p).kstack as *mut c_void);
+                (*p).kstack = ptr::null_mut();
+                freevm((*p).pgdir);
+                (*p).state = procstate::UNUSED;
+                (*p).pid = 0;
+                (*p).parent = ptr::null_mut();
+                (*p).name[0] = 0;
+                (*p).killed = 0;
                 PTABLE.lock.release();
-                return pid;
+                return pid as i32;
             }
         }
 
@@ -335,34 +320,32 @@ pub unsafe fn wait() -> i32 {
             return -1;
         }
 
-        // wait for child to exit
-        // sleep takes (chan, lock)
-        sleep(proc as *mut core::ffi::c_void, &mut PTABLE.lock as *mut _);
+        // wait for children
+        sleep(proc as *mut _ as *mut u8, &mut PTABLE.lock);
     }
 }
 
-// Per-CPU scheduler. Never returns.
+/// Per-CPU scheduler loop. This never returns.
 pub unsafe fn scheduler() -> ! {
     loop {
-        arm::sti();
+        sti(); // enable interrupts
 
         PTABLE.lock.acquire();
 
         for i in 0..(NPROC as usize) {
-            let pptr: *mut  proc = &mut PTABLE.proc[i];
-            if (*pptr).state != procstate::RUNNABLE {
+            let p = PTABLE.proc[i] as *mut Proc;
+            if (*p).state != procstate::RUNNABLE {
                 continue;
             }
 
-            proc = pptr;
-            switchuvm(pptr);
-            (*pptr).state = procstate::RUNNING;
+            proc = p;
+            switchuvm(p);
+            (*p).state = procstate::RUNNING ;
 
-            // context switch: swtch(&cpu->scheduler, proc->context)
-            // here `cpu` is assumed to be a global pointer defined elsewhere (proc_h/global)
-            swtch(&mut (*(crate::proc_h::cpu::get_cpu())).scheduler as *mut _, (*pptr).context);
+            // context switch to process
+            swtch(&mut cpu().scheduler, (*p).context);
 
-            // when swtch returns, process no longer running
+            // when returning here, process is no longer running
             proc = ptr::null_mut();
         }
 
@@ -370,182 +353,171 @@ pub unsafe fn scheduler() -> ! {
     }
 }
 
-// Enter scheduler. Must hold only ptable.lock and changed proc->state.
+/// Enter scheduler; must hold only ptable.lock and have changed proc->state.
 pub unsafe fn sched() {
-    // show_callstk("sched");
+    // check invariants
     if !PTABLE.lock.holding() {
-        panic("sched ptable.lock");
+        panic!("sched: ptable.lock");
     }
 
-    let cpu_ptr = crate::proc_h::cpu::get_cpu_ptr();
-    if (*cpu_ptr).ncli != 1 {
-        panic("sched locks");
+    if cpu().ncli != 1 {
+        panic!("sched: locks");
     }
 
-    if (*proc).state == procstate::RUNNING {
-        panic("sched running");
+    if (*proc).state == procstate::RUNNING{
+        panic!("sched: running");
     }
 
-    if arm::int_enabled() != 0 {
-        panic("sched interruptible");
+    if int_enabled() == 0 {
+        panic!("sched: interruptible");
     }
 
-    let intena = (*cpu_ptr).intena;
-    swtch(&mut (*proc).context as *mut _, (*cpu_ptr).scheduler);
-    (*cpu_ptr).intena = intena;
+    let intena = cpu().intena;
+    swtch(&mut (*proc).context, cpu().scheduler);
+    cpu().intena = intena;
 }
 
-// Yield CPU for one scheduling round.
-pub unsafe fn yield_proc() {
+/// Yield CPU voluntarily.
+pub unsafe fn yield_cpu() {
     PTABLE.lock.acquire();
-    (*proc).state = procstate::RUNNABLE;
+    (*proc).state = procstate::RUNNABLE ;
     sched();
     PTABLE.lock.release();
 }
 
-// fork child's first scheduling will land here. Return to user space.
+/// First scheduling point for a forked child.
 pub unsafe fn forkret() {
     static mut FIRST: bool = true;
 
+    // still holding ptable.lock from scheduler
     PTABLE.lock.release();
 
     if FIRST {
         FIRST = false;
-        initlog();
+        initlog(); // run one-time init that requires process context
     }
 
-    // return to trapret (the code at allocproc arranged lr)
+    // return to trapret (done by context / lr)
 }
 
-// Sleep on channel atomically releasing lock and reacquire on wakeup.
-pub unsafe fn sleep_chan(chan: *mut core::ffi::c_void, lk: *mut spinlock_h::spinlock) {
+/// Sleep on channel `chan`. `lk` is the lock the caller holds.
+/// Atomically release `lk` and sleep; reacquire `lk` when awoken.
+pub unsafe fn sleep(chan: *mut u8, lk: &mut spinlock) {
     if proc.is_null() {
-        panic("sleep");
+        panic!("sleep: no proc");
+    }
+    if lk as *mut _ == ptr::null_mut() {
+        panic!("sleep without lk");
     }
 
-    if lk.is_null() {
-        panic("sleep without lk");
-    }
-
-    if lk != &mut PTABLE.lock as *mut _ {
+    // Acquire ptable lock to modify proc state without races.
+    if lk as *mut _ != &mut PTABLE.lock as *mut _ {
         PTABLE.lock.acquire();
-        (*lk).release();
+        lk.release();
     }
 
-    (*proc).chan = chan;
-    (*proc).state = procstate::SLEEPING;
+    // go to sleep
+    (*proc).chan = chan as *mut _;
+    (*proc).state = procstate::SLEEPING ;
     sched();
 
+    // tidy up
     (*proc).chan = ptr::null_mut();
 
-    if lk != &mut PTABLE.lock as *mut _ {
+    // reacquire original lock
+    if lk as *mut _ != &mut PTABLE.lock as *mut _ {
         PTABLE.lock.release();
-        (*lk).acquire();
+        lk.acquire();
     }
 }
 
-// Wakeup1: must be called with ptable.lock held.
-// Wake up all processes sleeping on chan.
-unsafe fn wakeup1_internal(chan: *mut core::ffi::c_void) {
+/// Wake up all processes sleeping on `chan`. ptable.lock must be held by caller.
+unsafe fn wakeup1_chan(chan: *mut u8) {
     for i in 0..(NPROC as usize) {
-        let pptr: *mut  proc= &mut PTABLE.proc[i];
-        if (*pptr).state == procstate::SLEEPING && (*pptr).chan == chan {
-            (*pptr).state = procstate::RUNNABLE;
+        let p = PTABLE.proc[i] as *mut Proc;
+        if (*p).state == procstate::SLEEPING && (*p).chan == chan as *mut _ {
+            (*p).state = procstate::RUNNABLE ;
         }
     }
 }
 
-// Wakeup all processes sleeping on chan.
-pub unsafe fn wakeup_public(chan: *mut core::ffi::c_void) {
+/// Wake up all processes sleeping on `chan`.
+pub unsafe fn wakeup(chan: *mut u8) {
     PTABLE.lock.acquire();
-    wakeup1_internal(chan);
+    wakeup1_chan(chan);
     PTABLE.lock.release();
 }
 
-// Kill the process with given pid.
+/// Kill process with pid. Returns 0 on success, -1 if not found.
 pub unsafe fn kill(pid: i32) -> i32 {
     PTABLE.lock.acquire();
-
     for i in 0..(NPROC as usize) {
-        let pptr: *mut  proc= &mut PTABLE.proc[i];
-        if (*pptr).pid as i32 == pid {
-            (*pptr).killed = 1;
-            if (*pptr).state == procstate::SLEEPING {
-                (*pptr).state = procstate::RUNNABLE;
+        let p = PTABLE.proc[i] as *mut Proc;
+        if (*p).pid == pid as u32{
+            (*p).killed = 1;
+            if (*p).state == procstate::SLEEPING{
+                (*p).state = procstate::RUNNABLE;
             }
             PTABLE.lock.release();
             return 0;
         }
     }
-
     PTABLE.lock.release();
     -1
 }
 
-// Print process list for debugging (no locks to avoid wedging).
+/// Print process list for debugging. No lock to avoid wedging the machine.
 pub unsafe fn procdump() {
+    // textual states mapping - ensure it matches your enum/consts
     let states = [
-        "unused", "embryo", "sleep ", "runble", "run   ", "zombie",
+        "unused", "embryo", "sleep ", "runble", "run   ", "zombie"
     ];
 
     for i in 0..(NPROC as usize) {
-        let pptr: *mut  proc= &mut PTABLE.proc[i];
-        if (*pptr).state == procstate::UNUSED {
+        let p = PTABLE.proc[i] as *mut Proc;
+        if (*p).state == procstate::UNUSED {
             continue;
         }
 
-        let state_idx = match (*pptr).state {
-            procstate::UNUSED => 0,
-            procstate::EMBRYO => 1,
-            procstate::SLEEPING => 2,
-            procstate::RUNNABLE => 3,
-            procstate::RUNNING => 4,
-            procstate::ZOMBIE => 5,
-            _ => 0,
+        let s = if (*p).state >= 0 && ((*p).state as usize) < states.len() {
+            states[(*p).state as usize]
+        } else {
+            "???"
         };
 
-        let state_str = states[state_idx];
-        cprintf("%d %s %s\n", (*pptr).pid, state_str, (*pptr).name.as_ptr());
+        cprintf!("{} {} {}\n\0", (*p).pid, s.as_ptr() as u32, (*p).name.as_ptr() as u32);
     }
 
-    show_callstk("procdump: \n");
+    show_callstk("procdump: \n\0" );
 }
 
-// Print running processes: pid, parent pid, state, name, syscalls
+/// Print running processes table (PID, PPID, STATE, NAME, SYSCALLS)
 pub unsafe fn ps() {
     let states = [
-        "unused", "embryo", "sleep", "runble", "run", "zombie",
+        "unused", "embryo", "sleep", "runble", "run", "zombie"
     ];
 
     PTABLE.lock.acquire();
-
-    cprintf("PID\tPARENT PID\tSTATE\t\tNAME\tSYSCALLS\n");
+    cprintf!("PID\tPPID\tSTATE\t\tNAME\tSYSCALLS\n\0");
 
     for i in 0..(NPROC as usize) {
-        let pptr: *mut  proc = &mut PTABLE.proc[i];
-        if (*pptr).state == procstate::UNUSED {
+        let p = PTABLE.proc[i] as *mut Proc;
+        if (*p).state == procstate::UNUSED {
             continue;
         }
 
-        let state_idx = match (*pptr).state {
-            procstate::UNUSED => 0,
-            procstate::EMBRYO => 1,
-            procstate::SLEEPING => 2,
-            procstate::RUNNABLE => 3,
-            procstate::RUNNING => 4,
-            procstate::ZOMBIE => 5,
-            _ => 0,
+        let s = if (*p).state >= 0 && (*p).state as usize < states.len() {
+            states[(*p).state as usize]
+        } else {
+            "???"
         };
 
-        let state_str = states[state_idx];
-        let ppid = if !(*pptr).parent.is_null() { (*(*pptr).parent).pid as i32 } else { -1 };
-
-        cprintf("%d\t%d\t\t%s\t\t%s\t%d\n",
-                (*pptr).pid,
-                ppid,
-                state_str,
-                (*pptr).name.as_ptr(),
-                (*pptr).syscount);
+        let ppid = if !(*p).parent.is_null() { (*(*p).parent).pid } else { -1 };
+        cprintf!("{}\t{}\t\t{}\t\t\t{}\n\0",
+                (*p).pid, ppid,
+                s,
+                // (*p).name,
+                (*p).syscount);
     }
 
     PTABLE.lock.release();

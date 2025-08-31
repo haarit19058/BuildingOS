@@ -1,218 +1,268 @@
-use crate::types_h::*;
-// use crate::defs::*;
-use crate::param_h::*;
-use crate::spinlock_h::*;
-use crate::fs_h::*;
-use crate::file_h::*;
-use crate::memlayout_h::*;
-use crate::mmu_h::*;
-use crate::proc_h::*;
+#![allow(non_snake_case)]
+#![allow(non_upper_case_globals)]
+#![allow(non_camel_case_types)]
 
-const BACKSPACE: i32 = 0x100;
+use crate::spinlock_h::*;  
+use crate::uart::*;
+use crate::proc::{ procdump,wakeup};
+use crate::arm::cli;
+use crate::fs::*;
+use crate::file_h::*; 
+use crate::proc::{proc as Proc,current_proc};
+
 const INPUT_BUF: usize = 512;
+const BACKSPACE: u8 = 0x100;
+const C: fn(u8) -> u8 = |x| x - b'@';
 
 static mut PANICKED: bool = false;
 
-static mut CONS: Console = Console {
-    lock: SpinLock::new(),
+static proc: *mut Proc = current_proc();
+/// Console state
+#[repr(C)]
+pub struct cons_t {
+    pub lock: spinlock,
+    pub locking: i32,
+}
+pub static mut CONS: cons_t = cons_t {
+    lock: spinlock::new(),
     locking: 0,
 };
 
-struct Console {
-    lock: SpinLock,
-    locking: i32,
+/// Input buffer
+#[repr(C)]
+pub struct inputbuf_t {
+    pub lock: spinlock,
+    pub buf: [u8; INPUT_BUF],
+    pub r: usize,
+    pub w: usize,
+    pub e: usize,
 }
-
-struct Input {
-    lock: SpinLock,
-    buf: [u8; INPUT_BUF],
-    r: usize,
-    w: usize,
-    e: usize,
-}
-
-static mut INPUT: Input = Input {
-    lock: SpinLock::new(),
+pub static mut INPUT: inputbuf_t = inputbuf_t {
+    lock: spinlock::new(),
     buf: [0; INPUT_BUF],
     r: 0,
     w: 0,
     e: 0,
 };
 
-fn consputc(c: i32) {
-    unsafe {
-        if PANICKED {
-            cli();
-            loop {}
-        }
+// Console output
+pub unsafe fn consputc(c: u8) {
+    if PANICKED {
+        cli();
+        loop {}
+    }
 
-        if c == BACKSPACE {
-            uartputc(b'\x08'); // \b
-            uartputc(b' ');
-            uartputc(b'\x08');
-        } else {
-            uartputc(c as u8);
-        }
+    if c == BACKSPACE {
+        uartputc('\x08' as u32);
+        uartputc(' ' as u32);
+        uartputc('\x08' as u32);
+    } else {
+        uartputc(c as u32);
     }
 }
 
-fn printint(mut xx: i32, base: i32, sign: bool) {
+// Print integer
+pub unsafe fn printint( xx: i32, base: u32,  sign: bool) {
     let digits = b"0123456789abcdef";
     let mut buf = [0u8; 16];
     let mut i = 0;
-    let mut x: u32;
+    let x: u32;
 
-    let mut sgn = false;
     if sign && xx < 0 {
-        sgn = true;
-        x = (-xx) as u32;
+        x = xx.wrapping_neg() as u32;
     } else {
         x = xx as u32;
     }
 
+    let mut val = x;
     loop {
-        buf[i] = digits[(x % base as u32) as usize];
+        buf[i] = digits[(val % base) as usize];
+        val /= base;
         i += 1;
-        x /= base as u32;
-        if x == 0 { break; }
+        if val == 0 { break; }
     }
 
-    if sgn {
+    if sign && xx < 0 {
         buf[i] = b'-';
         i += 1;
     }
 
     while i > 0 {
         i -= 1;
-        consputc(buf[i] as i32);
+        consputc(buf[i]);
     }
 }
 
-pub unsafe fn cprintf(fmt: *const u8, args: ...) {
-    let locking = CONS.locking != 0;
-    if locking {
-        acquire(&mut CONS.lock);
+// Simple cprintf with %d, %x, %p, %s
+pub unsafe fn cprintf(fmt: *const u8, args: *const usize, nargs: usize) {
+    let mut argp = args;
+    let mut i = 0;
+
+    if CONS.locking != 0 {
+        CONS.lock.acquire();
     }
 
     if fmt.is_null() {
-        panic(b"null fmt\0".as_ptr());
+        // panic(b"null fmt\0".as_ptr());
     }
 
-    // argument handling: Rust varargs not supported directly; emulate if needed
-
-    if locking {
-        release(&mut CONS.lock);
-    }
-}
-
-pub fn panic(s: &str) {
-    unsafe {
-        cli();
-        CONS.locking = 0;
-        cprintf(format!("cpu{}: panic: {}\n", cpu.id, s).as_ptr());
-        show_callstk(s);
-        PANICKED = true;
-        loop {}
-    }
-}
-
-fn consoleintr(getc: fn() -> i32) {
-    unsafe {
-        acquire(&mut INPUT.lock);
-        while let c @ _ if c >= 0 = getc() {
-            match c {
-                x if x == C(b'P') => procdump(),
-                x if x == C(b'U') => {
-                    while INPUT.e != INPUT.w && INPUT.buf[(INPUT.e - 1) % INPUT_BUF] != b'\n' {
-                        INPUT.e -= 1;
-                        consputc(BACKSPACE);
-                    }
-                }
-                x if x == C(b'H') || x == 0x7f => {
-                    if INPUT.e != INPUT.w {
-                        INPUT.e -= 1;
-                        consputc(BACKSPACE);
-                    }
-                }
-                x if x == b'\t' => {
-                    // TODO: autocomplete logic
-                }
-                _ => {
-                    if INPUT.e - INPUT.r < INPUT_BUF {
-                        let c = if c == b'\r' as i32 { b'\n' } else { c as u8 };
-                        INPUT.buf[INPUT.e % INPUT_BUF] = c;
-                        INPUT.e += 1;
-                        consputc(c as i32);
-
-                        if c == b'\n' || c == C(b'D') || INPUT.e == INPUT.r + INPUT_BUF {
-                            INPUT.w = INPUT.e;
-                            wakeup(&mut INPUT.r);
-                        }
-                    }
-                }
-            }
-        }
-        release(&mut INPUT.lock);
-    }
-}
-
-fn consoleread(ip: &mut Inode, dst: &mut [u8]) -> i32 {
-    unsafe {
-        let n = dst.len();
-        let mut i = 0;
-        iunlock(ip);
-        acquire(&mut INPUT.lock);
-
-        while i < n {
-            while INPUT.r == INPUT.w {
-                if proc.killed {
-                    release(&mut INPUT.lock);
-                    ilock(ip);
-                    return -1;
-                }
-                sleep(&mut INPUT.r, &mut INPUT.lock);
-            }
-
-            let c = INPUT.buf[INPUT.r % INPUT_BUF];
-            INPUT.r += 1;
-
-            if c == C(b'D') as u8 {
-                if i < n { INPUT.r -= 1; }
-                break;
-            }
-
-            dst[i] = c;
+    while *fmt.add(i) != 0 {
+        let c = *fmt.add(i);
+        if c != b'%' {
+            consputc(c);
             i += 1;
-            if c == b'\n' { break; }
+            continue;
         }
 
-        release(&mut INPUT.lock);
-        ilock(ip);
-        i as i32
-    }
-}
-
-fn consolewrite(ip: &mut Inode, buf: &[u8]) -> i32 {
-    unsafe {
-        iunlock(ip);
-        acquire(&mut CONS.lock);
-        for &b in buf {
-            consputc(b as i32);
+        i += 1;
+        let c2 = *fmt.add(i);
+        match c2 {
+            b'd' => {
+                printint(*argp as i32, 10, true);
+                argp = argp.add(1);
+            }
+            b'x' | b'p' => {
+                printint(*argp as i32, 16, false);
+                argp = argp.add(1);
+            }
+            b's' => {
+                let s = *argp as *const u8;
+                argp = argp.add(1);
+                let mut j = 0;
+                if !s.is_null() {
+                    while *s.add(j) != 0 {
+                        consputc(*s.add(j));
+                        j += 1;
+                    }
+                } else {
+                    for &b in b"(null)" { consputc(b); }
+                }
+            }
+            b'%' => consputc(b'%'),
+            _ => {
+                consputc(b'%');
+                consputc(c2);
+            }
         }
-        release(&mut CONS.lock);
-        ilock(ip);
-        buf.len() as i32
+
+        i += 1;
+    }
+
+    if CONS.locking != 0 {
+        CONS.lock.release();
     }
 }
 
-pub fn consoleinit() {
-    unsafe {
-        initlock(&mut CONS.lock, b"console\0".as_ptr());
-        initlock(&mut INPUT.lock, b"input\0".as_ptr());
-        devsw[CONSOLE].write = Some(consolewrite);
-        devsw[CONSOLE].read = Some(consoleread);
-        CONS.locking = 1;
+// Console input interrupt
+pub unsafe fn consoleintr(getc: fn() -> i32) {
+    INPUT.lock.acquire();
+    loop {
+        let c = getc();
+        if c < 0 { break; }
+
+        match c {
+            x if x == C(b'P') as i32 => procdump(),
+            x if x == C(b'U') as i32 => {
+                while INPUT.e != INPUT.w && INPUT.buf[(INPUT.e - 1) % INPUT_BUF] != b'\n' {
+                    INPUT.e -= 1;
+                    consputc(BACKSPACE);
+                }
+            }
+            x if x == C(b'H') as i32 || x == 0x7f => {
+                if INPUT.e != INPUT.w {
+                    INPUT.e -= 1;
+                    consputc(BACKSPACE);
+                }
+            }
+            _ => {
+                let c = if c == b'\r' as i32 { b'\n' } else { c as u8 };
+                if INPUT.e - INPUT.r < INPUT_BUF {
+                    INPUT.buf[INPUT.e % INPUT_BUF] = c;
+                    INPUT.e += 1;
+                    consputc(c);
+
+                    if c == b'\n' || c == C(b'D') as u8 || INPUT.e - INPUT.r == INPUT_BUF {
+                        INPUT.w = INPUT.e;
+                        wakeup(INPUT.r as *mut u8);
+                    }
+                }
+            }
+        }
     }
+    INPUT.lock.release();
 }
 
-const fn C(x: u8) -> i32 { (x - b'@') as i32 }
+use core::ptr;
+
+pub unsafe fn consoleread(ip: *mut inode, dst: *mut u8, mut n: usize) -> isize {
+    let target = n;
+    let mut c: i32;
+
+    iunlock(ip);
+
+    INPUT.lock.acquire();
+
+    while n > 0 {
+        while INPUT.r == INPUT.w {
+            if (*proc).killed != 0 {
+                INPUT.lock.release();
+                ilock(ip);
+                return -1;
+            }
+
+            sleep(&mut INPUT.r as *mut usize, &mut INPUT.lock);
+        }
+
+        c = INPUT.buf[INPUT.r % INPUT_BUF] as i32;
+        INPUT.r = INPUT.r.wrapping_add(1);
+
+        if c == C(b'D') as i32 { // EOF
+            if n < target {
+                INPUT.r = INPUT.r.wrapping_sub(1);
+            }
+            break;
+        }
+
+        ptr::write(dst, c as u8);
+        dst = dst.add(1);
+        n -= 1;
+
+        if c == b'\n' as i32 {
+            break;
+        }
+    }
+
+    INPUT.lock.release();
+    ilock(ip);
+
+    (target - n) as isize
+}
+
+pub unsafe fn consolewrite(ip: *mut inode, buf: *const u8, n: usize) -> isize {
+    iunlock(ip);
+
+    CONS.lock.acquire();
+
+    for i in 0..n {
+        consputc(ptr::read(buf.add(i)) & 0xff);
+    }
+
+    CONS.lock.release();
+
+    ilock(ip);
+
+    n as isize
+}
+
+
+// Initialize console
+pub unsafe fn consoleinit() {
+    CONS.lock.acquire();
+    INPUT.lock.acquire();
+    // initlock(&mut CONS.lock, b"console\0".as_ptr());
+    // initlock(&mut INPUT.lock, b"input\0".as_ptr());
+    CONS.locking = 1;
+
+    devsw[CONSOLE].write = Some(consolewrite);
+    devsw[CONSOLE].read = Some(consoleread);
+}

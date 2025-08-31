@@ -1,6 +1,7 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 #![allow(dead_code)]
+#![allow(non_upper_case_globals)]
 
 use core::ptr;
 use core::mem::size_of;
@@ -90,7 +91,7 @@ pub fn kmem_init() {
 pub unsafe fn kmem_init2(vstart: *mut c_void, vend: *mut c_void) {
     let mut i: isize;
     let mut j: types_h::uint;
-    let mut total: types_h::uint32 = 0;
+    let mut total: types_h::uint32;
     let mut n: types_h::uint32;
     let  len: types_h::uint;
     let mut ord_ptr: *mut order;

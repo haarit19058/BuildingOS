@@ -22,8 +22,8 @@ const NUM_INTSRC: uint = 32;
 pub type ISR = fn(*mut arm_h::trapframe, uint);
 
 // Storage for VIC base pointer and ISR table
-static mut VIC_BASE: *mut u32 = core::ptr::null_mut();
-static mut ISRS: [ISR; NUM_INTSRC as usize] = [default_isr; NUM_INTSRC as usize];
+pub static mut VIC_BASE: *mut u32 = core::ptr::null_mut();
+pub static mut ISRS: [ISR; NUM_INTSRC as usize] = [default_isr; NUM_INTSRC as usize];
 
 // Default ISR - called for unhandled interrupts. Keep lightweight.
 fn default_isr(_tf: *mut arm_h::trapframe, n: uint) {

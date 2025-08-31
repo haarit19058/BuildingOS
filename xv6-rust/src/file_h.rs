@@ -19,7 +19,7 @@ pub struct file {
     pub ref_count: uint,     // reference count
     pub readable: bool,
     pub writable: bool,
-    pub pipe: Option<*mut pipe>,  // raw pointer to pipe
+    // pub pipe: Option<*mut pipe>,  // raw pointer to pipe
     pub ip: Option<*mut inode>,   // raw pointer to inode
     pub off: uint,
 }

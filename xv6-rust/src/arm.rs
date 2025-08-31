@@ -69,27 +69,27 @@ pub unsafe fn popcli() {
     }
 }
 
-pub unsafe fn getcallerpcs(mut fp: *mut u32, pcs: &mut [uint; params_h::N_CALLSTK]) {
+pub unsafe fn getcallerpcs(mut fp: *mut u32, pcs: &mut [uint; params_h::N_CALLSTK as usize]) {
     let mut i = 0;
     while i < params_h::N_CALLSTK {
         if fp.is_null() || fp < memlayout_h::KERNBASE as *mut u32 || fp == 0xffffffff as *mut u32 {
             break;
         }
         fp = fp.offset(-1);                 // move to saved fp
-        pcs[i] = *fp.add(1);                // saved lr
+        pcs[i as usize] = *fp.add(1);                // saved lr
         fp = *fp as *mut u32;               // follow chain
         i += 1;
     }
     for j in i..params_h::N_CALLSTK {
-        pcs[j] = 0;
+        pcs[j as usize] = 0;
     }
 }
 
 pub unsafe fn show_callstk(s: &str) {
-    let mut pcs: [uint; params_h::N_CALLSTK] = [0; params_h::N_CALLSTK];
+    let mut pcs: [uint; params_h::N_CALLSTK as usize] = [0; params_h::N_CALLSTK as usize];
     cprintf("%s\n", s);
     getcallerpcs(get_fp(), &mut pcs);
     for i in (0..params_h::N_CALLSTK).rev() {
-        cprintf("%d: 0x%x\n", i + 1, pcs[i]);
+        cprintf("%d: 0x%x\n", i + 1, pcs[i as usize]);
     }
 }

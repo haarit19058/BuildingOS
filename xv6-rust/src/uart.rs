@@ -1,3 +1,6 @@
+
+
+
 use core::ptr::{read_volatile, write_volatile};
 use crate::arm_h;
 
@@ -116,3 +119,33 @@ extern "C" {
 // pub struct arm_h::trapframe {
 //     _dummy: u32, // define properly later
 // }
+
+
+use core::fmt::{self, Write};
+
+struct UartWriter;
+
+impl Write for UartWriter {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        unsafe {
+            for byte in s.bytes() {
+                uartputc(byte as u32); // now uartputc takes u8
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Core kernel printf implementation
+pub fn kprintf(args: fmt::Arguments) {
+    let mut writer = UartWriter;
+    let _ = writer.write_fmt(args);
+}
+
+/// Small macro wrapper so you can call like C printf
+#[macro_export]
+macro_rules! cprintf {
+    ($($arg:tt)*) => {
+        $crate::uart::kprintf(format_args!($($arg)*))
+    };
+}

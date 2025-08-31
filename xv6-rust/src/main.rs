@@ -4,6 +4,8 @@
 
 // use core::ptr;
 
+use core::ffi::c_void;
+
 //
 mod versatile_pb_h;
 
@@ -29,8 +31,9 @@ mod memlayout_h;
 // done and dusted
 mod mmu_h;
 
-// 
-mod uart;
+#[macro_use] // 👈 this makes macros from uart.rs available everywhere
+pub mod uart;
+
 
 // 
 mod vm;
@@ -54,7 +57,10 @@ mod proc;
 mod bio;
 mod log;
 // mod trap_h;
-
+mod string_h;
+mod syscall;
+mod timer;
+mod console;
 
 
 // use crate::memlayout_h; // memlayout_h::INIT_KERNMAP, versatile_pb_h::PHYSTOP
@@ -94,7 +100,7 @@ pub extern "C" fn kmain() -> ! {
     unsafe {
         // Initialize cpu pointer to CPU 0’s structure. In multiprocessor systems this
         // would be set differently per core, but here it’s uniprocessor.
-        cpu = &mut cpus[0] as *mut proc_h::cpu;
+        cpu = cpus[0];
 
         // Initialize UART (device/uart.c equivalent)
         // memlayout_h::P2V is assumed to convert physical to virtual addresses as in your environment.
@@ -116,20 +122,20 @@ pub extern "C" fn kmain() -> ! {
 
         // Custom memory allocator setup for ARM (kpt_freerange expects addresses)
         vm::kpt_freerange(start_free, vectbl);
-        vm::kpt_freerange(vectbl + mmu_h::PT_SZ, memlayout_h::P2V_WO(memlayout_h::memlayout_h::INIT_KERNMAP));
-        vm::paging_init(memlayout_h::INIT_KERNMAP, params_h::versatile_pb_h::PHYSTOP);
+        vm::kpt_freerange(vectbl + mmu_h::PT_SZ, memlayout_h::P2V_WO(memlayout_h::INIT_KERNMAP));
+        vm::paging_init(memlayout_h::INIT_KERNMAP, versatile_pb_h::PHYSTOP);
         buddy::kmem_init();
-        buddy::kmem_init2(memlayout_h::P2V(memlayout_h::INIT_KERNMAP), memlayout_h::P2V(versatile_pb_h::PHYSTOP));
+        buddy::kmem_init2(memlayout_h::P2V(memlayout_h::INIT_KERNMAP) as *mut c_void, memlayout_h::P2V(versatile_pb_h::PHYSTOP) as *mut c_void);
 
         // Trap/interrupt and device initialization
         trap::trap_init();                 // vector table and stacks for models
-        picirq::pic_init(memlayout_h::P2V(picirq::VIC_BASE));     // interrupt controller
+        picirq::pic_init(memlayout_h::P2V(picirq::VIC_BASE as u32));     // interrupt controller
         uart::uart_enable_rx();            // enable UART RX interrupt
 
-        proc::consoleinit();               // init console
+        console::consoleinit();               // init console
         proc::pinit();                     // process table (locks)
 
-        bio::binit();                     // buffer cache
+        bio::BCACHE.binit();                     // buffer cache
         file::fileinit();                  // file table
         fs::iinit();                     // inode cache
         memide::ideinit();                   // IDE device init

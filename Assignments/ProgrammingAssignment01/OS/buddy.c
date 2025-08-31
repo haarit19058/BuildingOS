@@ -7,6 +7,7 @@
 #include "spinlock.h"
 #include "arm.h"
 
+// very good blog on gfg
 
 // this file implement the buddy memory allocator. Each order divides
 // the memory pool into equal-sized blocks (2^n). We use bitmap to record
@@ -15,9 +16,9 @@
 // free blocks (for each order), thus allowing fast allocation. There is
 // about 8% overhead (maximum) for this structure.
 
-#define MAX_ORD      12
-#define MIN_ORD      6
-#define N_ORD        (MAX_ORD - MIN_ORD +1)
+#define MAX_ORD      12 // largest block size = 2^MAX_ORD = 4K 
+#define MIN_ORD      6  // smallest block size = 2^MIN_ORD = 64 bytes
+#define N_ORD        (MAX_ORD - MIN_ORD +1) // number of orders
 
 struct mark {
     uint32  lnks;       // double links (actually indexes) 

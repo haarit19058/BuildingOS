@@ -6,14 +6,14 @@ use core::ptr;
 
 use crate::types_h::*;   // uint, uint32, etc.
 // use crate::defs::*;    // panic, cprintf
-use crate::param_h::*;   // syscall numbers constants
-use crate::mmu_h::*;     // v2p if needed
+// use crate::params_h::*;   // syscall numbers constants
+// use crate::mmu_h::*;     // v2p if needed
 use crate::proc_h::*;    // proc struct and proc global (adjust to your layout)
 use crate::arm_h::*;     // any arm constants used
 use crate::syscall_h::*;
 
-// Assumes TrapFrame is defined as in previous translation with fields r0..r12, etc.
-use crate::arm::TrapFrame;
+// Assumes trapframe is defined as in previous translation with fields r0..r12, etc.
+// use crate::arm::*;
 
 extern "C" {
     // The current process pointer (from your proc module / global)
@@ -60,10 +60,10 @@ pub unsafe fn fetchstr(addr: uint, pp: *mut *mut u8) -> i32 {
 // r1-r4 contain parameters. We support up to 4 parameters.
 pub unsafe fn argint(n: usize, ip: *mut i32) -> i32 {
     if n > 3 {
-        panic(b"too many system call parameters\n\0".as_ptr() as *const i8);
+        // panic(b"too many system call parameters\n\0".as_ptr() as *const i8);
     }
 
-    let tf = (*proc).tf as *const TrapFrame;
+    let tf = (*proc).tf as *const trapframe;
 
     let val: i32 = match n {
         0 => (*tf).r1 as i32,
@@ -178,6 +178,6 @@ pub unsafe fn syscall() {
     }
 
     // unknown syscall
-    cprintf(b"%d %s: unknown sys call %d\n\0".as_ptr() as *const i8, (*proc).pid, (*proc).name.as_ptr(), num as i32);
+    // cprintf!("{} {}: unknown sys call %d\n\0", (*proc).pid, (*proc).name, num );
     (*(*proc).tf).r0 = u32::MAX as u32; // -1 in unsigned cast
 }

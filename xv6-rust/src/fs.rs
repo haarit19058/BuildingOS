@@ -1,9 +1,10 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 #![allow(dead_code)]
+#![allow(non_upper_case_globals)]
+#![allow(unused_mut)]
 
-
-use core::ptr;
+// use core::ptr;
 use core::mem;
 use core::ffi::c_void;
 
@@ -11,12 +12,13 @@ use crate::params_h;
 use crate::types_h::*; // expects uint, etc.
 // use params_h;
 use crate::stat_h;
-use crate::mmu_h;
+// use crate::mmu_h;
 use crate::proc_h;
 use crate::spinlock_h;
 use crate::buf_h;
 use crate::fs_h;
 use crate::file_h;
+use crate::proc::*;
 
 // External C helper functions / globals (assumed present)
 extern "C" {
@@ -37,7 +39,7 @@ extern "C" {
     fn panic(msg: *const uint8) -> !;
 
     // device switch table
-    static devsw: *const crate::dev_h::devsw; // assume devsw[] available
+    static devsw: file_h::devsw; // assume devsw[] available
 
     // global proc pointer (current process)
     static mut proc: *mut proc_h::proc;
@@ -71,13 +73,13 @@ unsafe fn bzero(dev: uint, bno: uint) {
 
 // Allocate a zeroed disk block.
 unsafe fn balloc(dev: uint) -> uint {
-    let mut b: uint = 0;
+    let mut b: uint;
     let mut bi: uint;
     let mut m: uint;
-    let mut bp: *mut buf_h::buf = core::ptr::null_mut();
+    let mut bp: *mut buf_h::buf;
     let mut sb: fs_h::superblock = mem::zeroed();
 
-    bp = core::ptr::null_mut();
+    // bp = core::ptr::null_mut();
     readsb(dev as uint, &mut sb as *mut fs_h::superblock);
 
     b = 0;
@@ -106,6 +108,7 @@ unsafe fn balloc(dev: uint) -> uint {
 }
 
 // Free a disk block.
+
 unsafe fn bfree(dev: uint, b: uint) {
     let mut bp: *mut buf_h::buf;
     let mut sb: fs_h::superblock = mem::zeroed();
@@ -244,7 +247,7 @@ pub unsafe fn ilock(ip: *mut file_h::inode) {
     while ((*ip).flags & file_h::I_BUSY) != 0 {
         // sleep(ip, &icache.lock)
         // Assume sleep is available
-        crate::sleep_h::sleep(ip as *mut c_void, &ICACHE_LOCK as *const _ as *mut spinlock_h::spinlock);
+        sleep(ip as *mut c_void, &ICACHE_LOCK as *const _ as *mut spinlock_h::spinlock);
     }
 
     (*ip).flags |= file_h::I_BUSY;
@@ -284,7 +287,7 @@ pub unsafe fn iunlock(ip: *mut file_h::inode) {
     ICACHE_LOCK.acquire();
     (*ip).flags &= !file_h::I_BUSY;
     // wakeup(ip)
-    crate::sleep_h::wakeup(ip as *mut c_void);
+    wakeup(ip as *mut u8);
     ICACHE_LOCK.release();
 }
 
@@ -305,7 +308,7 @@ pub unsafe fn iput(ip: *mut file_h::inode) {
 
         ICACHE_LOCK.acquire();
         (*ip).flags = 0;
-        crate::sleep_h::wakeup(ip as *mut c_void);
+        wakeup(ip as *mut u8);
     }
 
     (*ip).ref_count = (*ip).ref_count.wrapping_sub(1);
@@ -363,7 +366,7 @@ unsafe fn bmap(ip: *mut file_h::inode, mut bn: uint) -> uint {
 
 // Truncate inode (discard contents).
 unsafe fn itrunc(ip: *mut file_h::inode) {
-    let mut i: usize;
+    // let mut i: usize;
     let mut j: usize;
     let mut bp: *mut buf_h::buf;
     let mut a: *mut uint;
@@ -463,7 +466,7 @@ pub unsafe fn writei(ip: *mut file_h::inode, src: *const u8, mut off: uint, mut 
         if (*ip).major < 0 || (*ip).major >= params_h::NDEV as uint16 {
             return -1;
         }
-        let devsw_ptr = devsw as *const crate::dev_h::devsw;
+        let devsw_ptr = devsw ;
         let write_fn = (*devsw_ptr.add(major)).write;
         if write_fn.is_none() {
             return -1;
@@ -512,7 +515,7 @@ pub unsafe fn namecmp(s: *const uint8, t: *const uint8) -> uint {
 // Look for a directory entry in a directory.
 // If found, set *poff to byte offset of entry.
 pub unsafe fn dirlookup(dp: *mut file_h::inode, name: *const uint8, poff: *mut uint) -> *mut file_h::inode {
-    let mut off: uint = 0;
+    let mut off: uint ;
     let mut inum: uint;
     let mut de: fs_h::dirent = mem::zeroed();
 
@@ -522,7 +525,7 @@ pub unsafe fn dirlookup(dp: *mut file_h::inode, name: *const uint8, poff: *mut u
 
     off = 0;
     while off < (*dp).size {
-        if readi(dp, (&mut de) as *mut fs_h::dirent as *mut u8, off, mem::size_of::<fs_h::dirent>() as uint) != mem::size_of::<fs_h::dirent>() as uint {
+        if readi(dp, (&mut de) as *mut fs_h::dirent as *mut u8, off, mem::size_of::<fs_h::dirent>() as uint) != mem::size_of::<fs_h::dirent>() as i32 {
             panic(b"dirlink read\0".as_ptr() as *const uint8);
         }
 
@@ -547,7 +550,7 @@ pub unsafe fn dirlookup(dp: *mut file_h::inode, name: *const uint8, poff: *mut u
 
 // Write a new directory entry (name, inum) into the directory dp.
 pub unsafe fn dirlink(dp: *mut file_h::inode, name: *const uint8, inum: uint) -> i32 {
-    let mut off: uint = 0;
+    let mut off: uint ;
     let mut de: fs_h::dirent = mem::zeroed();
     let mut ip: *mut file_h::inode;
 
@@ -561,7 +564,7 @@ pub unsafe fn dirlink(dp: *mut file_h::inode, name: *const uint8, inum: uint) ->
     // Look for an empty dirent.
     off = 0;
     while (off as uint) < (*dp).size {
-        if readi(dp, (&mut de) as *mut fs_h::dirent as *mut u8, off as uint, mem::size_of::<fs_h::dirent>() as uint) != mem::size_of::<fs_h::dirent>() as uint {
+        if readi(dp, (&mut de) as *mut fs_h::dirent as *mut u8, off as uint, mem::size_of::<fs_h::dirent>() as uint) != mem::size_of::<fs_h::dirent>() as i32 {
             panic(b"dirlink read\0".as_ptr() as *const uint8);
         }
         if de.inum == 0 {
@@ -576,7 +579,7 @@ pub unsafe fn dirlink(dp: *mut file_h::inode, name: *const uint8, inum: uint) ->
     strncpy(de.name.as_mut_ptr() as *mut uint8, name, fs_h::DIRSIZ as usize);
     de.inum = inum as u16;
 
-    if writei(dp, (&de) as *const fs_h::dirent as *const u8, off as uint, mem::size_of::<fs_h::dirent>() as uint) != mem::size_of::<fs_h::dirent>() as uint {
+    if writei(dp, (&de) as *const fs_h::dirent as *const u8, off as uint, mem::size_of::<fs_h::dirent>() as uint) != mem::size_of::<fs_h::dirent>() as i32 {
         panic(b"dirlink\0".as_ptr() as *const uint8);
     }
 
