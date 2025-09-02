@@ -2,6 +2,8 @@
 #![allow(non_snake_case)]
 #![allow(dead_code)]
 
+use core::ptr::{self};
+
 // use crate::types_h::*;
 use crate::params_h::{ NFILE, LOGSIZE};
 // use crate::fs_h;
@@ -18,11 +20,10 @@ pub struct ftable {
     pub file: [file; NFILE as usize],
 }
 
-// Assume file::new() and spinlock::new() exist and are usable at static init time.
-// If not const, change FTABLE to be initialized at runtime in fileinit().
+// Now we can statically initialize FTABLE
 pub static mut FTABLE: ftable = ftable {
     lock: spinlock_h::spinlock::new(),
-    file: core::array::from_fn(|_| file),
+    file: [file::new(); NFILE as usize],
 };
 
 /// Initialize the file table (call at boot).
@@ -34,7 +35,7 @@ pub fn fileinit() {
 }
 
 /// Allocate a file structure. Returns `Some(&'static mut file)` if allocated, else `None`.
-pub fn filealloc() -> Option<&'static mut file> {
+pub fn filealloc() -> *mut file {
     unsafe {
         FTABLE.lock.acquire();
 
@@ -43,13 +44,13 @@ pub fn filealloc() -> Option<&'static mut file> {
                 f.ref_count = 1;
                 FTABLE.lock.release();
                 // return a 'static mutable reference to the slot
-                return Some(&mut *(f as *mut file));
+                return &mut *(f as *mut file);
             }
         }
 
         FTABLE.lock.release();
     }
-    None
+    ptr::null_mut()
 }
 
 /// Increment ref count for a file and return the same file reference.
@@ -72,7 +73,7 @@ pub unsafe fn filedup(f: *mut file) -> *mut file {
 // Close file `f`. Decrease refcount; on final close, perform cleanup depending on file type.
 pub unsafe fn fileclose(f: *mut file) {
     // local shallow copy to operate on after unlocking
-    let mut ff: file;
+    let  ff: file;
 
     FTABLE.lock.acquire();
 
@@ -98,8 +99,9 @@ pub unsafe fn fileclose(f: *mut file) {
     // Now release resources depending on type
     match ff.type_ {
         fdtype::FD_PIPE => {
-            if let Some(p) = ff.pipe {
-                crate::pipe::pipeclose(p, ff.writable);
+            let p = ff.pipe;
+            if !p.is_null() {
+                crate::pipe::pipeclose(p, ff.writable as i32);
             }
         }
         fdtype::FD_INODE => {
@@ -114,7 +116,7 @@ pub unsafe fn fileclose(f: *mut file) {
 }
 
 /// Get metadata about `f` and store into `st`. Returns 0 on success, -1 on failure.
-pub fn filestat(f: &file, st: &mut stat_h::stat) -> i32 {
+pub unsafe fn filestat(f: &file, st: &mut stat_h::stat) -> i32 {
     match f.type_ {
         fdtype::FD_INODE => {
             if let Some(ip) = f.ip {
@@ -133,14 +135,15 @@ pub fn filestat(f: &file, st: &mut stat_h::stat) -> i32 {
 }
 
 /// Read from file into `addr` up to `n` bytes. Returns number of bytes read or -1 on error.
-pub fn fileread(f: &mut file, addr: *mut u8, n: i32) -> i32 {
+pub unsafe fn fileread(f: &mut file, addr: *mut u8, n: i32) -> i32 {
     if !f.readable {
         return -1;
     }
 
     match f.type_ {
         fdtype::FD_PIPE => {
-            if let Some(p) = f.pipe {
+            let p = f.pipe;
+            if !p.is_null() {
                 // assume piperead defined: piperead(pipe_ptr, addr, n) -> i32
                 crate::pipe::piperead(p, addr, n)
             } else {
@@ -151,7 +154,7 @@ pub fn fileread(f: &mut file, addr: *mut u8, n: i32) -> i32 {
             unsafe {
                 if let Some(ip) = f.ip {
                     crate::fs::ilock(ip);
-                    let r = crate::fs::readi(ip, addr, f.off as i32, n);
+                    let r = crate::fs::readi(ip, addr, f.off, n as u32 ) ;
                     if r > 0 {
                         f.off = f.off.wrapping_add(r as u32);
                     }
@@ -169,14 +172,15 @@ pub fn fileread(f: &mut file, addr: *mut u8, n: i32) -> i32 {
 }
 
 /// Write `n` bytes from `addr` to file. Returns number of bytes written or -1 on error.
-pub fn filewrite(f: &mut file, addr: *const u8, n: i32) -> i32 {
+pub unsafe fn filewrite(f: &mut file, addr: *const u8, n: i32) -> i32 {
     if !f.writable {
         return -1;
     }
 
     match f.type_ {
         fdtype::FD_PIPE => {
-            if let Some(p) = f.pipe {
+            let p = f.pipe;
+            if !p.is_null() {
                 crate::pipe::pipewrite(p, addr, n)
             } else {
                 -1
@@ -196,7 +200,7 @@ pub fn filewrite(f: &mut file, addr: *const u8, n: i32) -> i32 {
                     log::begin_trans();
                     if let Some(ip) = f.ip {
                         crate::fs::ilock(ip);
-                        let r = crate::fs::writei(ip, addr.add(i as usize), f.off as i32, n1);
+                        let r = crate::fs::writei(ip, addr.add(i as usize), f.off as u32, n1 as u32);
                         if r > 0 {
                             f.off = f.off.wrapping_add(r as u32);
                         }

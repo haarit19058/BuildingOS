@@ -1,120 +1,164 @@
-use crate::file_h::*;
-use crate::spinlock_h::*;
-use crate::proc_h::*;
+#![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
+#![allow(non_upper_case_globals)]
 
-const PIPESIZE: usize = 512;
+use core::ffi::c_void;
 
-pub struct Pipe {
-    lock: SpinLock,
-    data: [u8; PIPESIZE],
-    nread: usize,     // bytes read
-    nwrite: usize,    // bytes written
-    readopen: bool,   // read fd is still open
-    writeopen: bool,  // write fd is still open
+use crate::{
+    spinlock_h::spinlock,
+    file_h::file,
+    file::*,
+    proc::*,
+    // params_h::*,
+    // defs_h::{filealloc, fileclose},
+    // proc_h::{proc, sleep, wakeup}, // assuming proc struct + sleep/wakeup exist
+    buddy::{kmalloc, kfree, get_order},
+};
+
+pub const PIPESIZE: usize = 512;
+
+#[repr(C)]
+pub struct pipe {
+    pub lock: spinlock,
+    pub data: [u8; PIPESIZE],
+    pub nread: u32,      // number of bytes read
+    pub nwrite: u32,     // number of bytes written
+    pub readopen: i32,   // read fd is still open
+    pub writeopen: i32,  // write fd is still open
 }
 
-impl Pipe {
-    pub fn new() -> Option<Box<Self>> {
-        let mut p = Box::new(Self {
-            lock: SpinLock::new("pipe"),
-            data: [0; PIPESIZE],
-            nread: 0,
-            nwrite: 0,
-            readopen: true,
-            writeopen: true,
-        });
-        Some(p)
-    }
-}
+impl pipe {
+    pub fn new() -> *mut Self {
+        unsafe {
+            let p = kmalloc(get_order(core::mem::size_of::<Self>() as u32)) as *mut pipe;
+            if p.is_null() {
+                return core::ptr::null_mut();
+            }
 
-pub fn pipealloc(f0: &mut Option<File>, f1: &mut Option<File>) -> i32 {
-    *f0 = File::alloc();
-    *f1 = File::alloc();
-
-    if f0.is_none() || f1.is_none() {
-        return -1;
-    }
-
-    let p = match Pipe::new() {
-        Some(pipe) => pipe,
-        None => {
-            f0.take().map(|f| f.close());
-            f1.take().map(|f| f.close());
-            return -1;
+            (*p).readopen = 1;
+            (*p).writeopen = 1;
+            (*p).nread = 0;
+            (*p).nwrite = 0;
+            (*p).lock = spinlock::new();
+            (*p).lock.init(b"pipe\0".as_ptr());
+            p
         }
-    };
-
-    // Initialize file ends
-    f0.as_mut().unwrap().init_pipe(true, false, p.clone());
-    f1.as_mut().unwrap().init_pipe(false, true, p.clone());
-
-    0
-}
-
-pub fn pipeclose(p: &mut Pipe, writable: bool) {
-    p.lock.acquire();
-    if writable {
-        p.writeopen = false;
-        wakeup(&mut p.nread);
-    } else {
-        p.readopen = false;
-        wakeup(&mut p.nwrite);
-    }
-
-    if !p.readopen && !p.writeopen {
-        p.lock.release();
-        // Memory freed automatically in Rust when Box goes out of scope
-    } else {
-        p.lock.release();
     }
 }
 
-pub fn pipewrite(p: &mut Pipe, buf: &[u8]) -> i32 {
-    p.lock.acquire();
+unsafe fn goto_bad(p: *mut pipe, f0: *mut *mut file, f1: *mut *mut file) -> i32 {
+        if !p.is_null() {
+            kfree(p as *mut c_void, get_order(core::mem::size_of::<pipe>() as u32));
+        }
+        if !(*f0).is_null() {
+            fileclose(*f0);
+        }
+        if !(*f1).is_null() {
+            fileclose(*f1);
+        }
+        -1
+}
+/// Allocate pipe and two file descriptors
+pub unsafe fn pipealloc(f0: *mut *mut file, f1: *mut *mut file) -> i32 {
+    *f0 = core::ptr::null_mut();
+    *f1 = core::ptr::null_mut();
 
-    let mut written = 0;
-    for &byte in buf {
-        while p.nwrite == p.nread + PIPESIZE {
-            if !p.readopen || proc().killed {
-                p.lock.release();
+    let mut p: *mut pipe = core::ptr::null_mut();
+
+    *f0 = filealloc();
+    if (*f0).is_null() {
+        goto_bad(p, f0, f1);
+    }
+
+    *f1 = filealloc();
+    if (*f1).is_null() {
+        goto_bad(p, f0, f1);
+    }
+
+    p = pipe::new();
+    if p.is_null() {
+        goto_bad(p, f0, f1);
+    }
+
+    (**f0).type_ = crate::file_h::fdtype::FD_PIPE;
+    (**f0).readable = 1 == 1;
+    (**f0).writable = 0 == 1;
+    (**f0).pipe = p ;
+
+    (**f1).type_ = crate::file_h::fdtype::FD_PIPE;
+    (**f1).readable = 0 ==1;
+    (**f1).writable = 1 == 1;
+    (**f1).pipe = p ;
+
+    return 0;
+
+    
+}
+
+pub unsafe fn pipeclose(p: *mut pipe, writable: i32) {
+    (*p).lock.acquire();
+    if writable != 0 {
+        (*p).writeopen = 0;
+        wakeup(&mut (*p).nread as *mut u32 as *mut u8);
+    } else {
+        (*p).readopen = 0;
+        wakeup(&mut (*p).nwrite as *mut u32 as *mut u8);
+    }
+
+    if (*p).readopen == 0 && (*p).writeopen == 0 {
+        (*p).lock.release();
+        kfree(p as *mut c_void, get_order(core::mem::size_of::<pipe>() as u32));
+    } else {
+        (*p).lock.release();
+    }
+}
+
+pub unsafe fn pipewrite(p: *mut pipe, addr: *const u8, n: i32) -> i32 {
+    let mut i = 0;
+    (*p).lock.acquire();
+
+    while i < n {
+        while (*p).nwrite == (*p).nread + PIPESIZE as u32 {
+            if (*p).readopen == 0 {
+                (*p).lock.release();
                 return -1;
             }
-            wakeup(&mut p.nread);
-            sleep(&mut p.nwrite, &p.lock);
+            wakeup(&mut (*p).nread as *mut u32 as *mut u8);
+            sleep(&mut (*p).nwrite as *mut u32 as *mut u8, &mut (*p).lock);
         }
 
-        p.data[p.nwrite % PIPESIZE] = byte;
-        p.nwrite += 1;
-        written += 1;
+        (*p).data[((*p).nwrite % PIPESIZE as u32) as usize] = *addr.add(i as usize);
+        (*p).nwrite += 1;
+        i += 1;
     }
 
-    wakeup(&mut p.nread);
-    p.lock.release();
-    written
+    wakeup(&mut (*p).nread as *mut u32 as *mut u8);
+    (*p).lock.release();
+    n
 }
 
-pub fn piperead(p: &mut Pipe, buf: &mut [u8]) -> i32 {
-    p.lock.acquire();
+pub unsafe fn piperead(p: *mut pipe, addr: *mut u8, n: i32) -> i32 {
+    let mut i = 0;
+    (*p).lock.acquire();
 
-    while p.nread == p.nwrite && p.writeopen {
-        if proc().killed {
-            p.lock.release();
+    while (*p).nread == (*p).nwrite && (*p).writeopen != 0 {
+        if (*proc).killed != 0 {
+            (*p).lock.release();
             return -1;
         }
-        sleep(&mut p.nread, &p.lock);
+        sleep(&mut (*p).nread as *mut u32 as *mut u8, &mut (*p).lock);
     }
 
-    let mut read = 0;
-    for slot in buf.iter_mut() {
-        if p.nread == p.nwrite {
+    while i < n {
+        if (*p).nread == (*p).nwrite {
             break;
         }
-        *slot = p.data[p.nread % PIPESIZE];
-        p.nread += 1;
-        read += 1;
+        *addr.add(i as usize) = (*p).data[((*p).nread % PIPESIZE as u32) as usize];
+        (*p).nread += 1;
+        i += 1;
     }
 
-    wakeup(&mut p.nwrite);
-    p.lock.release();
-    read
+    wakeup(&mut (*p).nwrite as *mut u32 as *mut u8);
+    (*p).lock.release();
+    i
 }

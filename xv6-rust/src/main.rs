@@ -31,7 +31,7 @@ mod memlayout_h;
 // done and dusted
 mod mmu_h;
 
-#[macro_use] // 👈 this makes macros from uart.rs available everywhere
+#[macro_use] 
 pub mod uart;
 
 
@@ -61,7 +61,7 @@ mod string_h;
 mod syscall;
 mod timer;
 mod console;
-
+mod pipe;
 
 // use crate::memlayout_h; // memlayout_h::INIT_KERNMAP, versatile_pb_h::PHYSTOP
 // use crate::{
@@ -74,6 +74,7 @@ mod console;
 // };
 
 // In no_std, you must say what to do on panic. Here you spin forever.
+use core::panic::PanicInfo;
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
     loop {}
@@ -86,7 +87,6 @@ extern "C" {
 }
 
 #[allow(non_upper_case_globals)]
-pub static mut cpus: [proc_h::cpu; params_h::NCPU] = unsafe { core::mem::zeroed() };
 
 
 #[allow(non_upper_case_globals)]
@@ -100,7 +100,7 @@ pub extern "C" fn kmain() -> ! {
     unsafe {
         // Initialize cpu pointer to CPU 0’s structure. In multiprocessor systems this
         // would be set differently per core, but here it’s uniprocessor.
-        cpu = cpus[0];
+        cpu = proc::cpus[0];
 
         // Initialize UART (device/uart.c equivalent)
         // memlayout_h::P2V is assumed to convert physical to virtual addresses as in your environment.
@@ -108,7 +108,7 @@ pub extern "C" fn kmain() -> ! {
 
         // Interrupt vector table is in the middle of first 1MB. We use the leftover for page tables.
         // VEC_TBL & PDE_MASK is a constant expression similar to the C version.
-        let mut vectbl: u32 = memlayout_h::P2V_WO(versatile_pb_h::VEC_TBL & mmu_h::PDE_MASK);
+        let  vectbl: u32 = memlayout_h::P2V_WO(versatile_pb_h::VEC_TBL & mmu_h::PDE_MASK);
 
         //
         // VM & memory initialization (vm.c in C)

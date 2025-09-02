@@ -4,9 +4,11 @@
 
 use crate::types_h::*;
 use crate::fs_h;
+use crate::pipe::{pipe as Pipe};
 
 // file types
 #[repr(u8)]
+#[derive(Copy, Clone)]
 pub enum fdtype {
     FD_NONE = 0,
     FD_PIPE,
@@ -14,15 +16,32 @@ pub enum fdtype {
 }
 
 // In-memory file structure
+#[derive(Copy, Clone)]
 pub struct file {
     pub type_: fdtype,      // file type
     pub ref_count: uint,     // reference count
     pub readable: bool,
     pub writable: bool,
-    // pub pipe: Option<*mut pipe>,  // raw pointer to pipe
+    pub pipe: *mut Pipe,  // raw pointer to pipe
     pub ip: Option<*mut inode>,   // raw pointer to inode
     pub off: uint,
 }
+
+impl file {
+    pub const fn new() -> Self {
+        file {
+            type_: fdtype::FD_NONE,   // assumes you have a "none" variant
+            ref_count: 0,
+            readable: false,
+            writable: false,
+            pipe: core::ptr::null_mut(),
+            ip: None,
+            off: 0,
+        }
+    }
+}
+
+
 
 // In-memory inode
 pub struct inode {
@@ -45,9 +64,10 @@ pub const I_VALID: uint = 0x2;
 
 // Device switch table
 pub struct devsw {
-    pub read: Option<unsafe fn(ip: *mut inode, buf: *mut u8, n: uint) -> uint>,
-    pub write: Option<unsafe fn(ip: *mut inode, buf: *mut u8, n: uint) -> uint>,
+    pub read: Option<unsafe fn(ip: *mut inode, buf: *mut u8, n: usize) -> isize>,
+    pub write: Option<unsafe fn(ip: *mut inode, buf: *const u8, n: usize) -> isize>,
 }
+
 
 // Console major device number
 pub const CONSOLE: uint = 1;

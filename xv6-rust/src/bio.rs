@@ -7,9 +7,9 @@ use crate::buf_h::*;
 use crate::spinlock_h::*;
 use crate::types_h::*;
 use crate::memide::*;
-use crate::syscall::*;
+// use crate::syscall::*;
 use crate:: proc::*;
-use crate::syscall_h::*;    
+// use crate::syscall_h::*;    
 // use crate::{panic, sleep, wakeup, iderw}; // assume these are defined elsewhere
 
 // Number of buffers

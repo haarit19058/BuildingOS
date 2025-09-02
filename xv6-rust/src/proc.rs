@@ -43,17 +43,17 @@ pub static mut PTABLE: PTable = PTable::new();
 pub static mut initproc: *mut Proc = ptr::null_mut();
 pub static mut proc: *mut Proc = ptr::null_mut(); // current running process (on this CPU)
 pub static mut nextpid: i32 = 1;
+pub static mut cpus: [*mut CPU; NCPU as usize] = unsafe { core::mem::zeroed() };
+
 
 extern "C" {
 //     fn forkret();
+fn swtch(old: *mut *mut context, new: *mut context);
     fn trapret();
 }
 
-pub unsafe fn cpu() -> &'static mut CPU {
-    if cpu.is_null() {
-        panic!("cpu: cpu is null");
-    }
-    &mut *cpu
+pub unsafe fn cpu() -> *mut CPU {
+    cpus[0]
 }
 
 pub unsafe fn current_proc() -> *mut Proc {
@@ -343,7 +343,7 @@ pub unsafe fn scheduler() -> ! {
             (*p).state = procstate::RUNNING ;
 
             // context switch to process
-            swtch(&mut cpu().scheduler, (*p).context);
+            swtch(&mut (*cpu()).scheduler, (*p).context);
 
             // when returning here, process is no longer running
             proc = ptr::null_mut();
@@ -360,7 +360,7 @@ pub unsafe fn sched() {
         panic!("sched: ptable.lock");
     }
 
-    if cpu().ncli != 1 {
+    if (*cpu()).ncli != 1 {
         panic!("sched: locks");
     }
 
@@ -372,9 +372,9 @@ pub unsafe fn sched() {
         panic!("sched: interruptible");
     }
 
-    let intena = cpu().intena;
-    swtch(&mut (*proc).context, cpu().scheduler);
-    cpu().intena = intena;
+    let intena = (*cpu()).intena;
+    swtch(&mut (*proc).context, (*cpu()).scheduler);
+    (*cpu()).intena = intena;
 }
 
 /// Yield CPU voluntarily.
@@ -479,7 +479,7 @@ pub unsafe fn procdump() {
             continue;
         }
 
-        let s = if (*p).state >= 0 && ((*p).state as usize) < states.len() {
+        let s = if (*p).state != procstate::UNUSED   {
             states[(*p).state as usize]
         } else {
             "???"
@@ -506,13 +506,13 @@ pub unsafe fn ps() {
             continue;
         }
 
-        let s = if (*p).state >= 0 && (*p).state as usize < states.len() {
+        let s = if (*p).state != procstate::UNUSED   {
             states[(*p).state as usize]
         } else {
             "???"
         };
 
-        let ppid = if !(*p).parent.is_null() { (*(*p).parent).pid } else { -1 };
+        let ppid = if !(*p).parent.is_null() { (*(*p).parent).pid } else { 0 };
         cprintf!("{}\t{}\t\t{}\t\t\t{}\n\0",
                 (*p).pid, ppid,
                 s,

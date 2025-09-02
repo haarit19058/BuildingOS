@@ -8,7 +8,7 @@ use crate::proc::{ procdump,wakeup};
 use crate::arm::cli;
 use crate::fs::*;
 use crate::file_h::*; 
-use crate::proc::{proc as Proc,current_proc};
+use crate::proc::*;
 
 const INPUT_BUF: usize = 512;
 const BACKSPACE: u8 = 0x100;
@@ -16,7 +16,7 @@ const C: fn(u8) -> u8 = |x| x - b'@';
 
 static mut PANICKED: bool = false;
 
-static proc: *mut Proc = current_proc();
+// static proc: *mut Proc = current_proc();
 /// Console state
 #[repr(C)]
 pub struct cons_t {
@@ -94,7 +94,7 @@ pub unsafe fn printint( xx: i32, base: u32,  sign: bool) {
 }
 
 // Simple cprintf with %d, %x, %p, %s
-pub unsafe fn cprintf(fmt: *const u8, args: *const usize, nargs: usize) {
+pub unsafe fn cprintf(fmt: *const u8, args: *const usize, _nargs: usize) {
     let mut argp = args;
     let mut i = 0;
 
@@ -194,7 +194,7 @@ pub unsafe fn consoleintr(getc: fn() -> i32) {
 
 use core::ptr;
 
-pub unsafe fn consoleread(ip: *mut inode, dst: *mut u8, mut n: usize) -> isize {
+pub unsafe fn consoleread(ip: *mut inode, mut dst: *mut u8, mut n: usize) -> isize {
     let target = n;
     let mut c: i32;
 
@@ -210,7 +210,7 @@ pub unsafe fn consoleread(ip: *mut inode, dst: *mut u8, mut n: usize) -> isize {
                 return -1;
             }
 
-            sleep(&mut INPUT.r as *mut usize, &mut INPUT.lock);
+            sleep(INPUT.r as *mut u8, &mut INPUT.lock);
         }
 
         c = INPUT.buf[INPUT.r % INPUT_BUF] as i32;
@@ -263,6 +263,6 @@ pub unsafe fn consoleinit() {
     // initlock(&mut INPUT.lock, b"input\0".as_ptr());
     CONS.locking = 1;
 
-    devsw[CONSOLE].write = Some(consolewrite);
-    devsw[CONSOLE].read = Some(consoleread);
+    devsw[CONSOLE as usize].write = Some(consolewrite);
+    devsw[CONSOLE as usize].read = Some(consoleread);
 }

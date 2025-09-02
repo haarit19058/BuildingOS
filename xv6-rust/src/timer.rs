@@ -3,7 +3,10 @@
 
 use core::ptr::{read_volatile, write_volatile};
 use crate::spinlock_h::*;
-use crate::types_h::*;
+use crate::proc::{wakeup};
+// use crate::types_h::*;
+// use crate::params_h::*;
+use crate::versatile_pb_h::*;
 use crate::picirq::{*};
 use crate::arm_h::*;
 
@@ -33,16 +36,32 @@ fn P2V(addr: usize) -> *mut u32 {
 
 // acknowledge timer interrupt
 unsafe fn ack_timer() {
-    let timer0 = P2V(TIMER0);
+    let timer0 = P2V(TIMER0 as usize);
     write_volatile(timer0.add(TIMER_INTCLR), 1);
 }
 
+// timer interrupt handler
+pub unsafe fn isr_timer(_tp: *mut trapframe, _irq_idx: u32) {
+    TICKSLOCK.acquire();
+    TICKS += 1;
+    wakeup(TICKS as *mut u8);
+    TICKSLOCK.release();
+    ack_timer();
+}
+fn isr_timer_wrapper(_tp: *mut trapframe, _irq_idx: u32) {
+    unsafe {
+        // forward irq to your real handler, trapframe is not available
+        isr_timer(_tp, _irq_idx );
+    }
+}
+
+
 // initialize timer
 pub unsafe fn timer_init(hz: u32) {
-    let timer0 = P2V(TIMER0);
+    let timer0 = P2V(TIMER0 as usize);
     TIMER_HZ = hz;
 
-    TICKSLOCK.init("time");
+    TICKSLOCK.init("time".as_ptr());
 
     write_volatile(timer0.add(TIMER_LOAD), CLK_HZ / hz);
     write_volatile(
@@ -50,21 +69,13 @@ pub unsafe fn timer_init(hz: u32) {
         TIMER_EN | TIMER_PERIODIC | TIMER_32BIT | TIMER_INTEN,
     );
 
-    pic_enable(PIC_TIMER01, isr_timer);
+    pic_enable(PIC_TIMER01, isr_timer_wrapper);
 }
 
-// timer interrupt handler
-pub unsafe extern "C" fn isr_timer(_tp: *mut trapframe, _irq_idx: i32) {
-    TICKSLOCK.acquire();
-    TICKS += 1;
-    wakeup(&mut TICKS as *mut u32);
-    TICKSLOCK.release();
-    ack_timer();
-}
 
 // microsecond delay using timer1
 pub unsafe fn micro_delay(us: u32) {
-    let timer1 = P2V(TIMER1);
+    let timer1 = P2V(TIMER1 as usize);
 
     // configure freerun timer
     write_volatile(timer1.add(TIMER_CONTROL), TIMER_EN | TIMER_32BIT);

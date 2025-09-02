@@ -41,7 +41,12 @@ pub static mut LOG: Log = Log {
 
 /// Initialize the on-disk log geometry and recover any committed txns.
 pub unsafe fn initlog() {
-    let mut sb = superblock::default();
+    let mut sb = superblock {
+        size: 0,
+        nblocks: 0,
+        ninodes: 0,
+        nlog: 0
+    };
 
     // Ensure header fits one block
     if core::mem::size_of::<LogHeader>() > BSIZE as usize {
