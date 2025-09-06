@@ -1,22 +1,26 @@
-ENTRY(_start)
+MEMORY
+{
+    RAM (rwx) : ORIGIN = 0x80000, LENGTH = 0x3F800000   /* ~1GB RAM minus GPU space */
+}
 
 SECTIONS
 {
-  . = 0x80000;   /* Raspberry Pi boot address */
+    . = ORIGIN(RAM);
 
-  .text : {
-    *(.text._start*)
-    *(.text*)
-  }
+    .text : ALIGN(4) {
+        *(.text*)
+    } > RAM
 
-  .rodata : { *(.rodata*) }
-  .data   : { *(.data*) }
-  .bss    : { *(.bss*) *(COMMON) }
+    .rodata : ALIGN(4) {
+        *(.rodata*)
+    } > RAM
 
-  
-  /* inside memory.ld */
-  _sheap = .;
-  . = ORIGIN(RAM) + 0x100000; /* example offset; set appropriately */
-  _eheap = . + 0x800000; /* example size 8MiB */
+    .data : ALIGN(4) {
+        *(.data*)
+    } > RAM
 
+    .bss : ALIGN(4) {
+        *(.bss*)
+        *(COMMON)
+    } > RAM
 }

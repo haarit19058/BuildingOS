@@ -12,13 +12,14 @@ use crate::arm::*;
 use crate::spinlock_h::*;
 use crate::proc_h::{proc as Proc,procstate,context,cpu as CPU};
 // use crate::proc::*;          // struct proc, trapframe, context, etc.
-use crate::fs::*;
-use crate::file::*;
+// use crate::fs::*;
+// use crate::file::*;
 use crate::buddy::*;       // alloc_page, free_page (assumed)
 use crate::vm::*;           // kpt_alloc, inituvm, copyuvm, freevm
-use crate::log::*;          use core::ffi::c_void;
+// use crate::log::*;          use core::ffi::c_void;
 // initlog
 use core::ptr;
+use crate::c_void;
 
 /// Process table
 // use core::ptr;
@@ -181,7 +182,7 @@ pub unsafe fn userinit() {
     (*p).tf.as_mut().unwrap().pc = 0;
 
     safestrcpy((*p).name.as_mut_ptr(), "initcode\0".as_ptr(), core::mem::size_of_val(&(*p).name));
-    (*p).cwd = namei("/\0".as_ptr());
+    // (*p).cwd = namei("/\0".as_ptr());
 
     (*p).state = procstate::RUNNABLE;
 }
@@ -233,13 +234,13 @@ pub unsafe fn fork() -> i32 {
     (*np).tf.as_mut().unwrap().r0 = 0;
 
     // copy file descriptors
-    for i in 0..NOFILE as usize {
-        if !(*proc).ofile[i].is_null() {
-            (*np).ofile[i] = filedup((*proc).ofile[i]);
-        }
-    }
+    // for i in 0..NOFILE as usize {
+    //     // if !(*proc).ofile[i].is_null() {
+    //         // (*np).ofile[i] = filedup((*proc).ofile[i]);
+    //     }
+    // }
 
-    (*np).cwd = idup((*proc).cwd);
+    // (*np).cwd = idup((*proc).cwd);
 
     let pid = (*np).pid;
     (*np).state = procstate::RUNNABLE;
@@ -254,15 +255,15 @@ pub unsafe fn exit() -> ! {
     }
 
     // close files
-    for fd in 0..(NOFILE as usize) {
-        if !(*proc).ofile[fd].is_null() {
-            fileclose((*proc).ofile[fd]);
-            (*proc).ofile[fd] = ptr::null_mut();
-        }
-    }
+    // for fd in 0..(NOFILE as usize) {
+    //     if !(*proc).ofile[fd].is_null() {
+    //         // fileclose((*proc).ofile[fd]);
+    //         // (*proc).ofile[fd] = ptr::null_mut();
+    //     }
+    // }
 
-    iput((*proc).cwd);
-    (*proc).cwd = ptr::null_mut();
+    // iput((*proc).cwd);
+    // (*proc).cwd = ptr::null_mut();
 
     PTABLE.lock.acquire();
 
@@ -394,7 +395,7 @@ pub unsafe fn forkret() {
 
     if FIRST {
         FIRST = false;
-        initlog(); // run one-time init that requires process context
+        // initlog(); // run one-time init that requires process context
     }
 
     // return to trapret (done by context / lr)

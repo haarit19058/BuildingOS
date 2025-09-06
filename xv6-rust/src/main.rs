@@ -1,17 +1,18 @@
 #![no_std]  // dont link the rust standard library you only get core
 #![no_main] // there is no c style main(). You'll provide you own entyr symbol (_start) the the linker or bootloader jumps to
-
-
+// #![allow(warnings)]
+// #![feature(asm_experimental_arch)]
+// #![cfg(target_arch = "arm")]
 // use core::ptr;
 
-use core::ffi::c_void;
 
-//
-mod versatile_pb_h;
+// mod versatile_pb_h;
+
 
 // types declaration done now moving on to the next one
 mod types_h;
-
+use core::ffi::c_void;
+mod versatile_pb_h;
 // file looks good here
 mod params_h;
 
@@ -63,6 +64,8 @@ mod timer;
 mod console;
 mod pipe;
 
+
+
 // use crate::memlayout_h; // memlayout_h::INIT_KERNMAP, versatile_pb_h::PHYSTOP
 // use crate::{
 //     arm_h::*,        // UART0, VIC_BASE, memlayout_h::P2V, P2V_WO, etc.
@@ -104,7 +107,7 @@ pub extern "C" fn kmain() -> ! {
 
         // Initialize UART (device/uart.c equivalent)
         // memlayout_h::P2V is assumed to convert physical to virtual addresses as in your environment.
-        // uart::uart_init(memlayout_h::memlayout_h::P2V(versatile_pb_h::UART0));
+        uart::uart_init(memlayout_h::memlayout_h::P2V(versatile_pb_h::UART0));
 
         // Interrupt vector table is in the middle of first 1MB. We use the leftover for page tables.
         // VEC_TBL & PDE_MASK is a constant expression similar to the C version.

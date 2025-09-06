@@ -11,7 +11,7 @@ use crate::file_h::*;
 use crate::proc::*;
 
 const INPUT_BUF: usize = 512;
-const BACKSPACE: u8 = 0x100;
+const BACKSPACE: u8 = 0x10;
 const C: fn(u8) -> u8 = |x| x - b'@';
 
 static mut PANICKED: bool = false;

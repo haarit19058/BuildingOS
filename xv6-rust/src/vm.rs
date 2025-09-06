@@ -12,7 +12,7 @@ use core::ffi::c_void;
 use crate::memlayout_h::uint;
 use crate::{types_h, mmu_h, spinlock_h, arm,memlayout_h};
 use crate::buddy; // alloc_page / free_page / kmalloc / kfree
-use crate::file_h;
+// use crate::file_h;
 
 // external functions / symbols assumed to exist in other modules
 // e.g. readi (from fs), panic (from defs)
