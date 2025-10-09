@@ -1,0 +1,1 @@
+cargo:rerun-if-changed=/mnt/Acer/Users/Haarit/Desktop/GitHubRepos/BuildingOS/tutorial-os-rust/src/bsp/raspberrypi/kernel.ld

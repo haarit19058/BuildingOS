@@ -78,11 +78,11 @@ pub unsafe fn kpt_free(v: *mut u8) {
 pub unsafe fn kpt_freerange(mut low: u32, hi: u32) {
     use mmu::PT_SZ;
 
+    cprintf!("kpt_freerange: low {} high {}\n", low, hi);
     while low < hi {
         _kpt_free(low as *mut u8);
         low = low.wrapping_add(PT_SZ as u32);
     }
-    cprintf!("kpt_freerange: low {} high {}", low, hi);
 }
 
 pub unsafe fn kpt_alloc() -> *mut u32 {
@@ -113,9 +113,11 @@ pub unsafe fn kpt_alloc() -> *mut u32 {
 // Walk page directory and return pointer to PTE for va. If alloc != 0, allocate page table page when missing
 pub unsafe fn walkpgdir(pgdir: *mut u32, va: u32, alloc: i32) -> *mut u32 {
     use mmu::{PDE_IDX, PTE_IDX, PT_ADDR, PE_TYPES, UPDE_TYPE};
-
+    
     let pde = &mut *pgdir.add(PDE_IDX(va) as usize) as *mut u32;
-
+    
+    
+    cprintf!("walkpgdir: va 0x{:08x} pde 0x\n", (*pde) & (PE_TYPES as u32));
     if ((*pde) & (PE_TYPES as u32)) != 0 {
         let pgtab = PT_ADDR(*pde) as *mut u32;
         return pgtab.add(PTE_IDX(va) as usize);
@@ -144,6 +146,7 @@ pub unsafe fn mappages(pgdir: *mut u32, va: *mut c_void, size: u32, mut pa: u32,
 
     loop {
         let pte = walkpgdir(pgdir, a, 1);
+        // cprintf!("mappages: va 0x{:08x} pa 0x{:08x}\n", a, pa);
         if pte.is_null() {
             return -1;
         }
@@ -438,7 +441,17 @@ pub unsafe fn paging_init(phy_low: u32, phy_hi: u32) {
     let vaddr = memlayout::P2V(phy_low) as *mut c_void;
     let size = phy_hi.wrapping_sub(phy_low);
 
+    cprintf!("paging_init: &_kernel_pgtbl = {:p}\n", (&mut _kernel_pgtbl) as *mut u32);
+    cprintf!("paging_init: base (as u32) = 0x{:08x}\n", base as u32);
+    cprintf!("paging_init: vbase (after P2V) = {:p}\n", vbase);
+    cprintf!("paging_init: phy_low=0x{:08x} phy_hi=0x{:08x} size=0x{:08x}\n", phy_low, phy_hi, size);
+    if phy_hi <= phy_low {
+        panic!("paging_init: phy_hi <= phy_low; nothing to map");
+    }
+
+    
     if mappages(pgdir, vaddr, size, phy_low, mmu::AP_KU as i32) != 0 {
+        // cprintf!("paging_init: phy_low 0x{:08x} phy_hi 0x{:08x}\n", phy_low, phy_hi);
         panic!("paging_init: mappages failed\0");
     }
     flush_tlb();

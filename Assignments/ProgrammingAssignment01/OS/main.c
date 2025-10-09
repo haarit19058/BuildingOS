@@ -43,7 +43,7 @@ void kmain (void)
     // over for page tables
     vectbl = P2V_WO (VEC_TBL & PDE_MASK);
     
-
+    cprintf("%d",vectbl);
     /*
     ./vm.c
 

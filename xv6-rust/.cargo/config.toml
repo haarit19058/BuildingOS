@@ -1,0 +1,4 @@
+[build]
+target = "armv7a-none-eabi"
+
+

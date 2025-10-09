@@ -1,4 +1,4 @@
-/* kernel.ld - AArch64 kernel linker script */
+/* kernel.ld - AArch64 kernel linker script for Raspberry Pi 3 */
 
 ENTRY(_start);
 
@@ -7,23 +7,31 @@ MEMORY
   RAM (rwx) : ORIGIN = 0x80000, LENGTH = 64M
 }
 
-/* Sizes (tunable) */
-STACK_SIZE    = 16 * 1024;    /* kernel stack space reserved at top of RAM */
-PGTBL_SIZE    = 4 * 1024;     /* one page for kernel page table */
-CPUSTATE_SIZE = 4 * 1024;     /* per-cpu/state area */
+/* Tunables */
+STACK_SIZE    = 64 * 1024;          /* matches .bss.stack in boot.S */
+PGTBL_SIZE    = 4 * 1024;
+CPUSTATE_SIZE = 4 * 1024;
 
 SECTIONS
 {
-  /* Start at beginning of RAM */
+  /* Start where Pi firmware jumps after reset */
   . = ORIGIN(RAM);
 
-  /* Text section */
+  /* Boot code section (must come first) */
+  .text.boot : ALIGN(0x1000)
+  {
+    KEEP(*(.text.boot))       /* ensure _start is kept */
+  } > RAM
+
+  /* Normal text + rodata */
   .text : ALIGN(0x1000)
   {
-    KEEP(*(.text.boot))
     *(.text*)
+  } > RAM
+
+  .rodata : ALIGN(0x1000)
+  {
     *(.rodata*)
-    . = ALIGN(8); /* Ensure 8-byte alignment for 64-bit data */
   } > RAM
 
   /* Data section */
@@ -31,40 +39,42 @@ SECTIONS
   {
     *(.data*)
     *(.sdata*)
-    . = ALIGN(8); /* Ensure 8-byte alignment */
+    . = ALIGN(8);
   } > RAM
 
-  /* Kernel page table */
+  /* BSS section */
   . = ALIGN(0x1000);
-  .kernel_pgtbl (NOLOAD) : ALIGN(8)
+  .bss (NOLOAD) : ALIGN(0x1000)
+  {
+    __bss_start = .;
+    *(.bss*)
+    *(COMMON)
+    . = ALIGN(8);
+    __bss_end = .;
+  } > RAM
+
+  /* Page table */
+  . = ALIGN(0x1000);
+  .kernel_pgtbl (NOLOAD) :
   {
     PROVIDE(_kernel_pgtbl = .);
     . = . + PGTBL_SIZE;
     PROVIDE(_kernel_pgtbl_end = .);
   } > RAM
 
-  /* CPU state */
+  /* Per-CPU state */
   . = ALIGN(0x1000);
-  .cpu_state (NOLOAD) : ALIGN(8)
+  .cpu_state (NOLOAD) :
   {
     PROVIDE(cpu = .);
     . = . + CPUSTATE_SIZE;
     PROVIDE(cpu_end = .);
   } > RAM
 
-  /* BSS section */
-  . = ALIGN(0x1000);
-  .bss (NOLOAD) : ALIGN(8)
-  {
-    __bss_start = .;
-    *(.bss*)
-    *(COMMON)
-    __bss_end = .;
-  } > RAM
 
-  /* Initcode */
+  /* Optional initcode (tiny user program) */
   . = ALIGN(0x1000);
-  .initcode : ALIGN(0x1000)
+  .initcode :
   {
     PROVIDE(__binary_initcode_start = .);
     KEEP(*(.initcode))
@@ -72,22 +82,13 @@ SECTIONS
     PROVIDE(__binary_initcode_size = __binary_initcode_end - __binary_initcode_start);
   } > RAM
 
-  /* Kernel stack */
-  PROVIDE(__stack_top = ORIGIN(RAM) + LENGTH(RAM));
-  PROVIDE(__stack_start = __stack_top - STACK_SIZE);
-
-  . = ALIGN(0x1000);
-  .kernel_stack (NOLOAD) : ALIGN(8)
-  {
-    . = __stack_start;
-    PROVIDE(__stack_start_sym = .);
-    . = . + STACK_SIZE;
-    PROVIDE(__stack_top_sym = .);
-  } > RAM
+  /* Symbols for stack (already allocated in .bss.stack) */
+  PROVIDE(stack_bottom = __bss_start);   /* boot.S expects stack_bottom */
+  PROVIDE(stack_top = __bss_end);        /* boot.S expects stack_top   */
 
   /* End symbol */
   PROVIDE(end_addr = .);
 
-  /* Discard unwanted sections */
+  /* Strip unneeded sections */
   /DISCARD/ : { *(.comment) *(.eh_frame) }
 }
