@@ -5,20 +5,21 @@ ELF    = target/$(TARGET)/$(MODE)/uart-demo
 IMG    = kernel8.img
 
 # Tools
-CARGO       = cargo
-OBJCOPY     = rust-objcopy
-QEMU        = qemu-system-aarch64
+CARGO = cargo
+QEMU  = qemu-system-aarch64
 
 # Default build target
 all: $(IMG)
 
 # Build ELF with cargo
 $(ELF):
-	$(CARGO) build -Zbuild-std=core,compiler_builtins --target $(TARGET) --$(MODE)
+	$(CARGO) build -Z build-std=core,compiler_builtins --target $(TARGET) --$(MODE)
 
-# Convert ELF to raw kernel8.img
+# Convert ELF to raw kernel8.img using cargo objcopy
+# cargo objcopy will pick the correct built artifact for the target/mode,
+# so we don't pass the ELF path here; we only ask objcopy to emit a binary.
 $(IMG): $(ELF)
-	$(OBJCOPY) --strip-all -O binary $(ELF) $(IMG)
+	$(CARGO) objcopy --$(MODE) -- -O binary $(IMG)
 
 # Run in QEMU (Pi 3 model, 64-bit)
 qemu: $(IMG)
@@ -28,3 +29,5 @@ qemu: $(IMG)
 clean:
 	$(CARGO) clean
 	rm -f $(IMG)
+
+.PHONY: all qemu clean
