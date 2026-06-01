@@ -1,10 +1,12 @@
 .
-├── build.rs
 ├── Cargo.lock
 ├── Cargo.toml
+├── kernel8.img
+├── linker.ld
 ├── src
 │   ├── main.rs
-│   └── memory.ld
+│   ├── memory.ld
+│   └── start.S
 └── structure.txt
 
-2 directories, 6 files
+2 directories, 8 files

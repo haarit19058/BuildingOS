@@ -1,15 +1,22 @@
 [package]
-name = "uart-demo"
+name = "rp5_kernel"
 version = "0.1.0"
 edition = "2021"
+build = "build.rs"
 
-[dependencies]
+[profile.release]
+panic = "abort"
+lto = true
+
+
+
+[package.metadata.cargo-objcopy]
+target = "aarch64-unknown-none"
+
 
 [profile.dev]
 panic = "abort"
 
-[profile.release]
-panic = "abort"
-
-[workspace]
+[dependencies]
+cc = "1.2.41"
 

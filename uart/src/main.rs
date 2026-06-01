@@ -1,109 +1,131 @@
-#![no_std]  // dont link the rust standard library you only get core
-#![no_main] // there is no c style main(). You'll provide you own entyr symbol (_start) the the linker or bootloader jumps to
-
-/*
-Panic info : used by your custom panic handler
-read_volatile/write_volatile: tell the compiler therse memory mus tnot be optimized away or reordered across other volatile accesses 
-critical for mmio registers
-*/
-
+#![no_std]
+#![no_main]
+// #![feature(asm)]
+#![allow(unused)]
 use core::panic::PanicInfo;
-use core::ptr::{read_volatile, write_volatile};
 
+const RP1_BASE: usize = 0x4000_0000;
+const UART0_BASE: usize = RP1_BASE + 0x0003_0000; // from RP1 peripheral doc
+const IO_BANK0_BASE: usize = RP1_BASE + 0x000d_0000; // IO_BANK0 base
 
-// In no_std, you must say what to do on panic. Here you spin forever.
+// PL011 register offsets
+const UART_DR: usize   = 0x00;
+const UART_RSR: usize  = 0x04;
+const UART_FR: usize   = 0x18;
+const UART_IBRD: usize = 0x24;
+const UART_FBRD: usize = 0x28;
+const UART_LCRH: usize = 0x2C;
+const UART_CR: usize   = 0x30;
+const UART_IMSC: usize = 0x38;
+const UART_ICR: usize  = 0x44;
+
+// IO_BANK0: per-pin CTRL register offset formula (see RP1 doc Table)
+#[inline(always)]
+fn io_bank0_ctrl(n: usize) -> usize {
+    // RP1 doc shows per-pin CTRL at IO_BANK0 + 0x004 + 0x008 * n (see RP1 docs)
+    IO_BANK0_BASE + 0x4 + 8 * n
+}
+
+#[inline(always)]
+unsafe fn mmio_read(addr: usize) -> u32 {
+    core::ptr::read_volatile(addr as *const u32)
+}
+#[inline(always)]
+unsafe fn mmio_write(addr: usize, val: u32) {
+    core::ptr::write_volatile(addr as *mut u32, val)
+}
+
+fn gpio_set_uart_on_14_15() {
+    // Set GPIO14 -> UART0_TX and GPIO15 -> UART0_RX
+    // From RP1 function table: FUNCSEL value for UART0_TX/UART0_RX is the function index shown
+    // in the RP1 doc table. Here we use the function numbers shown in the table (e.g. FUNCSEL = 14/15 -> see doc).
+    // Replace FUNCSEL values below with the exact values from the RP1 table if different.
+    const FUNC_UART0_TX: u32 = 14; // <<--- check table in RP1 doc and adjust if needed
+    const FUNC_UART0_RX: u32 = 15; // <<--- check table in RP1 doc and adjust if needed
+
+    unsafe {
+        // Write CTRL.FUNCSEL for gpio14
+        let off14 = io_bank0_ctrl(14);
+        let v14 = mmio_read(off14);
+        // FUNCSEL field is low bits; mask width depends on doc (use 5 bits typically)
+        let new14 = (v14 & !0x1F) | (FUNC_UART0_TX & 0x1F);
+        mmio_write(off14, new14);
+
+        // gpio15
+        let off15 = io_bank0_ctrl(15);
+        let v15 = mmio_read(off15);
+        let new15 = (v15 & !0x1F) | (FUNC_UART0_RX & 0x1F);
+        mmio_write(off15, new15);
+    }
+}
+
+fn uart_init_115200() {
+    // For PL011:
+    // IBRD = floor(UARTCLK / (16 * baud))
+    // FBRD = round((frac * 64))
+    const UARTCLK: u32 = 48_000_000; // typical clk_uart on RP1 (see RP1 doc)
+    const BAUD: u32 = 115_200;
+    let baud_div: f64 = (UARTCLK as f64) / (16.0 * BAUD as f64);
+    let ibrd = baud_div as u32;
+    let fbrd = ((baud_div - (ibrd as f64)) * 64.0 + 0.5) as u32;
+
+    unsafe {
+        // Disable UART (CR=0) while configuring
+        mmio_write(UART0_BASE + UART_CR, 0);
+
+        // Clear interrupts
+        mmio_write(UART0_BASE + UART_ICR, 0x7FF);
+
+        // Set integer & fractional baud rate
+        mmio_write(UART0_BASE + UART_IBRD, ibrd);
+        mmio_write(UART0_BASE + UART_FBRD, fbrd);
+
+        // LCR_H: enable FIFO (FEN) and set word length to 8 bits (WLEN=3)
+        // WLEN bits are bits [6:5] -> 3 << 5 = 0x60 ; FEN = 1<<4 = 0x10
+        mmio_write(UART0_BASE + UART_LCRH, (3 << 5) | (1 << 4));
+
+        // Enable UART, TX and RX in CR:
+        // UARTEN = 1 (bit 0), TXE = 1 (bit 8), RXE = 1 (bit 9)
+        mmio_write(UART0_BASE + UART_CR, (1 << 0) | (1 << 8) | (1 << 9));
+    }
+}
+
+fn uart_putc(ch: u8) {
+    unsafe {
+        // Wait until TX FIFO not full: FR.TXFF (bit 5) == 0
+        while (mmio_read(UART0_BASE + UART_FR) & (1 << 5)) != 0 {}
+        mmio_write(UART0_BASE + UART_DR, ch as u32);
+    }
+}
+
+fn uart_getc() -> Option<u8> {
+    unsafe {
+        // Check RXFE (bit 4) — receive FIFO empty when 1
+        if (mmio_read(UART0_BASE + UART_FR) & (1 << 4)) != 0 {
+            None
+        } else {
+            let v = mmio_read(UART0_BASE + UART_DR) as u8;
+            Some(v)
+        }
+    }
+}
+
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
-    loop {}
-}
-
-/// Base address of PL011 UART on Raspberry Pi 2/3 (BCM2836/2837).
-const UART0_BASE: usize = 0x3F201000;
-
-#[allow(non_snake_case)]
-mod pl011 {
-    pub const DR: usize   = 0x00; // Data Register
-    pub const FR: usize   = 0x18; // Flag Register
-    pub const IBRD: usize = 0x24; // Integer Baud Rate Divisor
-    pub const FBRD: usize = 0x28; // Fractional Baud Rate Divisor
-    pub const LCRH: usize = 0x2C; // Line Control
-    pub const CR: usize   = 0x30; // Control
-    pub const ICR: usize  = 0x44; // Interrupt Clear
-
-    // Bits
-    pub const FR_TXFF: u32   = 1 << 5; // Transmit FIFO full
-    pub const CR_UARTEN: u32 = 1 << 0;
-    pub const CR_TXE: u32    = 1 << 8;
-    pub const CR_RXE: u32    = 1 << 9;
-    pub const LCRH_FEN: u32  = 1 << 4;
-    pub const LCRH_WLEN_8: u32 = 3 << 5; // 8-bit word length
-}
-
-unsafe fn mmio_write(offset: usize, val: u32) {
-    write_volatile((UART0_BASE + offset) as *mut u32, val);
-}
-unsafe fn mmio_read(offset: usize) -> u32 {
-    read_volatile((UART0_BASE + offset) as *const u32)
-}
-
-fn uart_init() {
-    unsafe {
-        // Disable UART
-        mmio_write(pl011::CR, 0);
-
-        // Clear pending interrupts
-        mmio_write(pl011::ICR, 0x7FF);
-
-        // Assume UART clock is 48 MHz on Pi
-        // BaudDiv = UARTCLK / (16 * Baud)
-        // 48_000_000 / (16*115200) = 26.0416 → IBRD=26, FBRD≈3
-        mmio_write(pl011::IBRD, 26);
-        mmio_write(pl011::FBRD, 3);
-
-        // 8N1, enable FIFO
-        mmio_write(pl011::LCRH, pl011::LCRH_WLEN_8 | pl011::LCRH_FEN);
-
-        // Enable UART, TX, RX
-        mmio_write(pl011::CR, pl011::CR_UARTEN | pl011::CR_TXE | pl011::CR_RXE);
-    }
-}
-
-fn uart_putc(c: u8) {
-    unsafe {
-        // Wait until TX FIFO not full
-        while (mmio_read(pl011::FR) & pl011::FR_TXFF) != 0 {}
-        write_volatile((UART0_BASE + pl011::DR) as *mut u32, c as u32);
-    }
-}
-
-fn uart_write(s: &str) {
-    for &b in s.as_bytes() {
-        if b == b'\n' { uart_putc(b'\r'); }
-        uart_putc(b);
-    }
-}
-
-fn uart_getc() -> u8 {
-    unsafe {
-        // Wait until RX FIFO has data
-        while (mmio_read(pl011::FR) & (1 << 4)) != 0 {}
-        (mmio_read(pl011::DR) & 0xFF) as u8
-    }
-}
-
+fn panic(_info: &PanicInfo) -> ! { loop {} }
 
 #[no_mangle]
-pub extern "C" fn _start() -> ! {
-    uart_init();
-    uart_write("UART Echo ready. Type something...\n");
+pub extern "C" fn _start_rust() -> ! {
+    gpio_set_uart_on_14_15(); // set GPIO14/15 to UART0 function per RP1 doc
+    uart_init_115200();
+
+    let s = b"RP5 PL011 hello 115200\r\n";
+    for &b in s { uart_putc(b); }
 
     loop {
-        let c = uart_getc();   // wait for keypress
-        uart_putc(c);          // echo back
-
-        // Optionally handle newline properly
-        if c == b'\r' {
-            uart_putc(b'\n');
+        if let Some(c) = uart_getc() {
+            // echo
+            if c == b'\r' { uart_putc(b'\n'); }
+            uart_putc(c);
         }
     }
 }
